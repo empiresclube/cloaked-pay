@@ -16,5 +16,5 @@ const isVercel = process.env.DEPLOY_TARGET === "vercel" || !!process.env.VERCEL;
 
 export default defineConfig({
   cloudflare: isVercel ? false : undefined,
-  plugins: isVercel ? [nitro({ config: { preset: "vercel" } })] : [],
+  plugins: isVercel ? [nitro({ preset: "vercel" })] : [],
 });
