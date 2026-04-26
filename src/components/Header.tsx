@@ -59,7 +59,7 @@ export function Header() {
                 <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse-glow" />
                 {shortAddress(publicKey)}
               </div>
-              <Button variant="ghost" size="icon" onClick={disconnect} aria-label="Disconnect">
+              <Button variant="ghost" size="icon" onClick={handleDisconnect} aria-label="Disconnect">
                 <LogOut className="h-4 w-4" />
               </Button>
             </div>
