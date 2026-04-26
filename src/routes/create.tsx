@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Header } from "@/components/Header";
 import { useWallet } from "@/lib/wallet";
 import { linksStore } from "@/lib/storage";
-import { deriveStealthAddress, generateLinkId } from "@/lib/cloak";
+import { deriveStealthAddressFor, generateLinkId } from "@/lib/cloak";
 import type { PaymentLink, TokenSymbol } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,23 +71,24 @@ function CreatePage() {
       return;
     }
     setSubmitting(true);
-    // brief artificial latency for tactility (real op is instant)
-    await new Promise((r) => setTimeout(r, 350));
 
-    const { stealthAddress, viewingKeyRef } = deriveStealthAddress(publicKey);
-    const link: PaymentLink = {
-      id: generateLinkId(),
-      amount: amt,
-      token,
-      description: description.trim() || undefined,
-      createdAt: Date.now(),
-      status: "pending",
-      stealthAddress,
-      viewingKeyRef,
-      owner: publicKey,
-    };
-    linksStore.create(link);
-    setCreated(link);
+    try {
+      // Derives a one-time stealth address via the Cloak service.
+      const stealth = await deriveStealthAddressFor(publicKey);
+
+      const link: PaymentLink = {
+        id: generateLinkId(),
+        amount: amt,
+        token,
+        description: description.trim() || undefined,
+        createdAt: Date.now(),
+        status: "pending",
+        stealthAddress: stealth.address,
+        viewingKeyRef: stealth.viewingKeyRef,
+        owner: publicKey,
+      };
+      linksStore.create(link);
+      setCreated(link);
     setSubmitting(false);
     toast.success("Payment link created", {
       description: `Ready to receive ${amt.toFixed(2)} ${token} privately.`,
