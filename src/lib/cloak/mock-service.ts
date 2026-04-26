@@ -20,18 +20,12 @@
  * across reloads exactly as a production Cloak client would store them.
  */
 
-import {
-  generateCloakKeys,
-  generateUtxoKeypair,
-  formatAmount,
-  getExplorerUrl,
-  isValidSolanaAddress,
-  bytesToHex,
-  LAMPORTS_PER_SOL,
-  VERSION as CLOAK_SDK_VERSION,
-  type CloakKeyPair,
-  type UtxoKeypair,
-} from "@cloak.dev/sdk";
+// SDK is loaded lazily inside `loadSdk()` to keep `Buffer`/`snarkjs`/`bs58`
+// out of the initial SSR bundle. Importing the SDK at the top level evaluates
+// it during server render — where `Buffer` is undefined — which crashes the
+// whole page with a 500. All SDK-using methods are async, so the lazy import
+// adds zero observable latency in practice.
+import type { CloakKeyPair, UtxoKeypair } from "@cloak.dev/sdk";
 
 import type {
   Address,
@@ -49,8 +43,17 @@ import type {
 } from "./types";
 import type { TokenSymbol } from "../types";
 
-/* eslint-disable @typescript-eslint/no-unused-vars */
-void CLOAK_SDK_VERSION; // kept for runtime introspection in dev
+type CloakSdk = typeof import("@cloak.dev/sdk");
+let sdkPromise: Promise<CloakSdk> | null = null;
+
+/** Lazy-load the Cloak SDK *after* the Buffer polyfill is in place. */
+async function loadSdk(): Promise<CloakSdk> {
+  if (!sdkPromise) {
+    await import("./buffer-polyfill");
+    sdkPromise = import("@cloak.dev/sdk");
+  }
+  return sdkPromise;
+}
 
 /* ─────────────────────────────────────────────────────── Helpers ── */
 
