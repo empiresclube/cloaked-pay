@@ -11,6 +11,7 @@
  *      gated by an env flag like `import.meta.env.VITE_CLOAK_REAL`).
  */
 
+import "./buffer-polyfill"; // must run before SDK code touches `Buffer`
 import type { CloakService } from "./types";
 import { mockCloakService } from "./mock-service";
 
