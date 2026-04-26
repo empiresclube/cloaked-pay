@@ -27,6 +27,7 @@ export type {
 export { getCloakService } from "./service";
 export { useCloak, useShieldedBalance, usePrivateSend, deriveStealthAddressFor } from "./provider";
 export { CloakProvider } from "./provider";
+export { cloakUtils } from "./mock-service";
 
 /** Generates a short, shareable payment link ID. */
 export function generateLinkId(): string {
