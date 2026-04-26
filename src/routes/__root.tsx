@@ -69,8 +69,10 @@ function RootShell({ children }: { children: React.ReactNode }) {
 function RootComponent() {
   return (
     <WalletProvider>
-      <Outlet />
-      <Toaster />
+      <CloakProvider>
+        <Outlet />
+        <Toaster />
+      </CloakProvider>
     </WalletProvider>
   );
 }
