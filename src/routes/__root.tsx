@@ -1,5 +1,6 @@
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 import { WalletProvider } from "@/lib/wallet";
+import { CloakProvider } from "@/lib/cloak";
 import { Toaster } from "@/components/ui/sonner";
 
 import appCss from "../styles.css?url";
