@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Header } from "@/components/Header";
 import { linksStore } from "@/lib/storage";
 import { useWallet, shortAddress } from "@/lib/wallet";
-import { executePrivateTransfer } from "@/lib/cloak";
+import { getCloakService, type StealthAddress } from "@/lib/cloak";
 import type { PaymentLink } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -96,20 +96,40 @@ function PayPage() {
     }
     setError(null);
     const t = toast.loading("Preparing private transfer…");
+
+    // Reconstruct the StealthAddress from the stored payment link.
+    // In a real Cloak integration the recipient's full StealthAddress
+    // (including ephemeral pubkey) would be encoded in the link payload.
+    const recipient: StealthAddress = {
+      address: link.stealthAddress,
+      viewingKeyRef: link.viewingKeyRef,
+      ephemeralPubkey: link.stealthAddress, // placeholder, see comment above
+    };
+
     try {
-      setPhase("preparing");
-      await new Promise((r) => setTimeout(r, 700));
-      setPhase("signing");
-      toast.loading("Generating zero-knowledge proof…", { id: t });
-      await new Promise((r) => setTimeout(r, 900));
-      setPhase("confirming");
-      toast.loading("Confirming on Solana…", { id: t });
-      const result = await executePrivateTransfer({
-        to: link.stealthAddress,
+      const result = await getCloakService().privateSend({
+        payer: publicKey,
+        to: recipient,
         amount: link.amount,
         token: link.token,
-        payerPubkey: publicKey,
+        memo: link.description,
+        // One-click pay UX: top up the shielded pool just-in-time.
+        autoDeposit: true,
+        onProgress: (p) => {
+          // Map service progress phases to our local UI state machine.
+          if (p.phase === "preparing") {
+            setPhase("preparing");
+            toast.loading(p.message, { id: t });
+          } else if (p.phase === "proving") {
+            setPhase("signing");
+            toast.loading(p.message, { id: t });
+          } else if (p.phase === "submitting" || p.phase === "confirming") {
+            setPhase("confirming");
+            toast.loading(p.message, { id: t });
+          }
+        },
       });
+
       linksStore.updateStatus(link.id, "paid", result.signature);
       setPhase("success");
       toast.success("Payment sent privately", {
