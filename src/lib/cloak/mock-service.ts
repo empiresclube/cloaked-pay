@@ -148,7 +148,8 @@ async function getOrCreateCloakKeys(owner: Address): Promise<StoredCloakKeys> {
   const all = readJSON<Record<string, StoredCloakKeys>>(STORAGE.cloakKeys, {});
   if (all[owner]) return all[owner];
 
-  const keys: CloakKeyPair = await generateCloakKeys();
+  const sdk = await loadSdk();
+  const keys: CloakKeyPair = await sdk.generateCloakKeys();
   const stored: StoredCloakKeys = {
     owner,
     seedHex: keys.master.seedHex,
@@ -205,15 +206,16 @@ class CloakSdkService implements CloakService {
    * for the per-payment ephemeral key used in note encryption.
    */
   async deriveStealthAddress(recipient: Address): Promise<StealthAddress> {
-    if (!isValidSolanaAddress(recipient) && recipient.length < 32) {
+    const sdk = await loadSdk();
+    if (!sdk.isValidSolanaAddress(recipient) && recipient.length < 32) {
       // Don't block the demo on this — the mock wallet uses non-real pubkeys —
       // but flag it so the swap-to-real-wallet path works correctly.
       // eslint-disable-next-line no-console
       console.debug("[cloak] non-canonical recipient, accepting for demo");
     }
 
-    const stealth: UtxoKeypair = await generateUtxoKeypair();
-    const ephemeral: UtxoKeypair = await generateUtxoKeypair();
+    const stealth: UtxoKeypair = await sdk.generateUtxoKeypair();
+    const ephemeral: UtxoKeypair = await sdk.generateUtxoKeypair();
 
     // Convert bigint pubkeys to bytes32 → hex for stable, JSON-safe identifiers.
     const pubBytes = bigintToBytes32(stealth.publicKey);
@@ -222,9 +224,9 @@ class CloakSdkService implements CloakService {
     const ownerKeys = await getOrCreateCloakKeys(recipient);
 
     return {
-      address: bytesToHex(pubBytes),
+      address: sdk.bytesToHex(pubBytes),
       viewingKeyRef: `vk_${ownerKeys.viewingPublicHex.slice(0, 32)}`,
-      ephemeralPubkey: bytesToHex(ephBytes),
+      ephemeralPubkey: sdk.bytesToHex(ephBytes),
     };
   }
 
@@ -391,9 +393,10 @@ class CloakSdkService implements CloakService {
     scope: ViewingKey["scope"] = "full",
     label?: string,
   ): Promise<ViewingKey> {
+    const sdk = await loadSdk();
     const masterKeys = await getOrCreateCloakKeys(owner);
-    const fresh: UtxoKeypair = await generateUtxoKeypair();
-    const ref = `vk_${bytesToHex(bigintToBytes32(fresh.publicKey)).slice(0, 16)}`;
+    const fresh: UtxoKeypair = await sdk.generateUtxoKeypair();
+    const ref = `vk_${sdk.bytesToHex(bigintToBytes32(fresh.publicKey)).slice(0, 16)}`;
 
     const key: ViewingKey = {
       ref,
