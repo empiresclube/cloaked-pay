@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useWallet, shortAddress } from "@/lib/wallet";
 import { Button } from "@/components/ui/button";
-import { Shield, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { toast } from "sonner";
 
 export function Header() {
@@ -10,7 +10,9 @@ export function Header() {
 
   const handleConnect = async () => {
     await connect();
-    toast.success("Wallet connected", { description: "You're ready to send and receive privately." });
+    toast.success("Wallet connected", {
+      description: "You're ready to send and receive privately.",
+    });
     navigate({ to: "/dashboard" });
   };
 
@@ -20,31 +22,32 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border/60 bg-background/70 backdrop-blur-xl">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
-        <Link to="/" className="flex items-center gap-2 group">
-          <div className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-primary shadow-elegant">
-            <Shield className="h-4 w-4 text-primary-foreground" strokeWidth={2.5} />
+    <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-xl">
+      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
+        <Link to="/" className="flex items-center gap-2 group" aria-label="CloakPay home">
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-foreground">
+            {/* Minimal monogram mark */}
+            <span className="font-display text-[13px] font-semibold text-background">C</span>
           </div>
-          <span className="font-display text-lg font-semibold tracking-tight">
-            Cloak<span className="text-primary">Pay</span>
+          <span className="font-display text-[15px] font-semibold tracking-tight text-foreground">
+            Cloak<span className="text-muted-foreground">Pay</span>
           </span>
         </Link>
 
-        <nav className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
+        <nav className="hidden md:flex items-center gap-1 text-sm">
           {connected && (
             <>
               <Link
                 to="/dashboard"
-                className="transition-colors hover:text-foreground"
-                activeProps={{ className: "text-foreground" }}
+                className="px-3 py-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                activeProps={{ className: "text-foreground bg-secondary" }}
               >
                 Dashboard
               </Link>
               <Link
                 to="/create"
-                className="transition-colors hover:text-foreground"
-                activeProps={{ className: "text-foreground" }}
+                className="px-3 py-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                activeProps={{ className: "text-foreground bg-secondary" }}
               >
                 New link
               </Link>
@@ -52,17 +55,22 @@ export function Header() {
           )}
         </nav>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {connected && publicKey ? (
-            <div className="flex items-center gap-2">
-              <div className="hidden sm:flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-mono">
-                <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse-glow" />
+            <>
+              <div className="hidden sm:flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-mono text-muted-foreground">
+                <span className="h-1.5 w-1.5 rounded-full bg-success" />
                 {shortAddress(publicKey)}
               </div>
-              <Button variant="ghost" size="icon" onClick={handleDisconnect} aria-label="Disconnect">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleDisconnect}
+                aria-label="Disconnect wallet"
+              >
                 <LogOut className="h-4 w-4" />
               </Button>
-            </div>
+            </>
           ) : (
             <Button onClick={handleConnect} disabled={connecting} variant="hero" size="sm">
               {connecting ? "Connecting…" : "Connect wallet"}
