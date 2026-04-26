@@ -20,18 +20,12 @@
  * across reloads exactly as a production Cloak client would store them.
  */
 
-import {
-  generateCloakKeys,
-  generateUtxoKeypair,
-  formatAmount,
-  getExplorerUrl,
-  isValidSolanaAddress,
-  bytesToHex,
-  LAMPORTS_PER_SOL,
-  VERSION as CLOAK_SDK_VERSION,
-  type CloakKeyPair,
-  type UtxoKeypair,
-} from "@cloak.dev/sdk";
+// SDK is loaded lazily inside `loadSdk()` to keep `Buffer`/`snarkjs`/`bs58`
+// out of the initial SSR bundle. Importing the SDK at the top level evaluates
+// it during server render — where `Buffer` is undefined — which crashes the
+// whole page with a 500. All SDK-using methods are async, so the lazy import
+// adds zero observable latency in practice.
+import type { CloakKeyPair, UtxoKeypair } from "@cloak.dev/sdk";
 
 import type {
   Address,
@@ -49,8 +43,17 @@ import type {
 } from "./types";
 import type { TokenSymbol } from "../types";
 
-/* eslint-disable @typescript-eslint/no-unused-vars */
-void CLOAK_SDK_VERSION; // kept for runtime introspection in dev
+type CloakSdk = typeof import("@cloak.dev/sdk");
+let sdkPromise: Promise<CloakSdk> | null = null;
+
+/** Lazy-load the Cloak SDK *after* the Buffer polyfill is in place. */
+async function loadSdk(): Promise<CloakSdk> {
+  if (!sdkPromise) {
+    await import("./buffer-polyfill");
+    sdkPromise = import("@cloak.dev/sdk");
+  }
+  return sdkPromise;
+}
 
 /* ─────────────────────────────────────────────────────── Helpers ── */
 
@@ -145,7 +148,8 @@ async function getOrCreateCloakKeys(owner: Address): Promise<StoredCloakKeys> {
   const all = readJSON<Record<string, StoredCloakKeys>>(STORAGE.cloakKeys, {});
   if (all[owner]) return all[owner];
 
-  const keys: CloakKeyPair = await generateCloakKeys();
+  const sdk = await loadSdk();
+  const keys: CloakKeyPair = await sdk.generateCloakKeys();
   const stored: StoredCloakKeys = {
     owner,
     seedHex: keys.master.seedHex,
@@ -202,15 +206,16 @@ class CloakSdkService implements CloakService {
    * for the per-payment ephemeral key used in note encryption.
    */
   async deriveStealthAddress(recipient: Address): Promise<StealthAddress> {
-    if (!isValidSolanaAddress(recipient) && recipient.length < 32) {
+    const sdk = await loadSdk();
+    if (!sdk.isValidSolanaAddress(recipient) && recipient.length < 32) {
       // Don't block the demo on this — the mock wallet uses non-real pubkeys —
       // but flag it so the swap-to-real-wallet path works correctly.
       // eslint-disable-next-line no-console
       console.debug("[cloak] non-canonical recipient, accepting for demo");
     }
 
-    const stealth: UtxoKeypair = await generateUtxoKeypair();
-    const ephemeral: UtxoKeypair = await generateUtxoKeypair();
+    const stealth: UtxoKeypair = await sdk.generateUtxoKeypair();
+    const ephemeral: UtxoKeypair = await sdk.generateUtxoKeypair();
 
     // Convert bigint pubkeys to bytes32 → hex for stable, JSON-safe identifiers.
     const pubBytes = bigintToBytes32(stealth.publicKey);
@@ -219,9 +224,9 @@ class CloakSdkService implements CloakService {
     const ownerKeys = await getOrCreateCloakKeys(recipient);
 
     return {
-      address: bytesToHex(pubBytes),
+      address: sdk.bytesToHex(pubBytes),
       viewingKeyRef: `vk_${ownerKeys.viewingPublicHex.slice(0, 32)}`,
-      ephemeralPubkey: bytesToHex(ephBytes),
+      ephemeralPubkey: sdk.bytesToHex(ephBytes),
     };
   }
 
@@ -388,9 +393,10 @@ class CloakSdkService implements CloakService {
     scope: ViewingKey["scope"] = "full",
     label?: string,
   ): Promise<ViewingKey> {
+    const sdk = await loadSdk();
     const masterKeys = await getOrCreateCloakKeys(owner);
-    const fresh: UtxoKeypair = await generateUtxoKeypair();
-    const ref = `vk_${bytesToHex(bigintToBytes32(fresh.publicKey)).slice(0, 16)}`;
+    const fresh: UtxoKeypair = await sdk.generateUtxoKeypair();
+    const ref = `vk_${sdk.bytesToHex(bigintToBytes32(fresh.publicKey)).slice(0, 16)}`;
 
     const key: ViewingKey = {
       ref,
@@ -442,10 +448,17 @@ function bigintToBytes32(value: bigint): Uint8Array {
 export const cloakSdkService: CloakService = new CloakSdkService();
 export const mockCloakService = cloakSdkService; // kept for back-compat imports
 
-/** Real SDK utilities surfaced for UI use (explorer links, fee display). */
+/**
+ * Async accessors for SDK utilities. Loading lazily keeps the SDK off the
+ * SSR/initial bundle. Unused by current UI but kept on the public surface
+ * so future screens (explorer links, fee display) can opt in.
+ */
 export const cloakUtils = {
-  formatAmount,
-  getExplorerUrl,
-  LAMPORTS_PER_SOL,
-  isValidSolanaAddress,
+  formatAmount: async (...args: Parameters<CloakSdk["formatAmount"]>) =>
+    (await loadSdk()).formatAmount(...args),
+  getExplorerUrl: async (...args: Parameters<CloakSdk["getExplorerUrl"]>) =>
+    (await loadSdk()).getExplorerUrl(...args),
+  isValidSolanaAddress: async (addr: string) =>
+    (await loadSdk()).isValidSolanaAddress(addr),
+  getLamportsPerSol: async () => (await loadSdk()).LAMPORTS_PER_SOL,
 };
