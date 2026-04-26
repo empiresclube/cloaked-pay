@@ -89,10 +89,16 @@ function CreatePage() {
       };
       linksStore.create(link);
       setCreated(link);
-    setSubmitting(false);
-    toast.success("Payment link created", {
-      description: `Ready to receive ${amt.toFixed(2)} ${token} privately.`,
-    });
+      toast.success("Payment link created", {
+        description: `Ready to receive ${amt.toFixed(2)} ${token} privately.`,
+      });
+    } catch (err) {
+      toast.error("Couldn't create link", {
+        description: (err as Error).message,
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (created) {
