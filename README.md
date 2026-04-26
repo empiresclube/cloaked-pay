@@ -127,29 +127,33 @@ bun run preview
 
 ## 4b. Deploy on Vercel
 
-The repo includes a `vercel.json` and a `api/index.mjs` adapter that bridges
-the TanStack Start SSR output to Vercel's Node serverless runtime.
+The repo ships with a `vercel.json` and the [Nitro](https://nitro.build) Vite
+plugin, which is the official adapter recommended by Vercel for TanStack Start.
+Nitro emits the [Vercel Build Output API v3](https://vercel.com/docs/build-output-api/v3)
+format directly — no manual `api/` bridge, no custom rewrites, no runtime
+config required.
 
 **Steps:**
 
 1. **Push to GitHub** — use the Lovable "Connect to GitHub" button, then push.
 2. **Import on Vercel** — vercel.com → Add New Project → pick the repo.
-   Vercel auto-detects `vercel.json`. Defaults set in the file:
+   Vercel auto-detects `vercel.json`. Defaults:
    - Install command: `bun install`
    - Build command:   `DEPLOY_TARGET=vercel bun run build`
-   - Output dir:      `dist/client` (static assets)
-   - Function:        `api/index.mjs` (SSR handler, Node 20)
+   - Output:          `.vercel/output/` (auto-detected, includes static assets
+     under `static/` and the SSR function under `functions/__server.func/`)
 3. **Env vars** (Project Settings → Environment Variables):
    - `VITE_SOLANA_NETWORK = devnet`
    - `VITE_SOLANA_RPC_URL = <optional custom RPC>`
-4. **Deploy** — first deploy takes ~2 min. Deep links (`/pay/abc123`) and
-   page refreshes work because the rewrite in `vercel.json` routes every
-   non-asset request to the SSR handler.
+4. **Deploy** — first deploy takes ~2 min. Deep links (`/pay/abc123`) and page
+   refreshes work out of the box because Nitro wires SSR for every non-asset
+   request.
 
 **How the build switch works:** `vite.config.ts` reads `DEPLOY_TARGET=vercel`
-(or the auto-set `VERCEL=1` env var) and tells TanStack Start to use the
-`vercel` target instead of the default Cloudflare Worker target used inside
-Lovable. The Lovable preview keeps using Cloudflare with no changes.
+(or the auto-set `VERCEL=1` env var) and adds the Nitro plugin with
+`preset: "vercel"`, while disabling the Cloudflare plugin used by the Lovable
+preview. Inside Lovable everything keeps running on Cloudflare with no
+changes.
 
 
 To enable real on-chain submission later, replace the body of
