@@ -1,4 +1,11 @@
-import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import {
+  Outlet,
+  Link,
+  ClientOnly,
+  createRootRoute,
+  HeadContent,
+  Scripts,
+} from "@tanstack/react-router";
 import { WalletProvider } from "@/lib/wallet";
 import { CloakProvider } from "@/lib/cloak";
 import { Toaster } from "@/components/ui/sonner";
@@ -68,11 +75,13 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 function RootComponent() {
   return (
-    <WalletProvider>
-      <CloakProvider>
-        <Outlet />
-        <Toaster />
-      </CloakProvider>
-    </WalletProvider>
+    <ClientOnly fallback={<div className="min-h-screen bg-background" />}>
+      <WalletProvider>
+        <CloakProvider>
+          <Outlet />
+          <Toaster />
+        </CloakProvider>
+      </WalletProvider>
+    </ClientOnly>
   );
 }

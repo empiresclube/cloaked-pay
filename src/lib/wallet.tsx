@@ -1,10 +1,21 @@
 /**
- * Mock Solana wallet context.
- * Real integration: wrap with @solana/wallet-adapter-react and replace
- * the connect() implementation with wallet.connect() from the chosen adapter.
+ * Wallet façade — unified API used by the rest of the app.
+ *
+ * Internally backed by @solana/wallet-adapter-react (Phantom, Solflare, …).
+ * Exposes the same shape the app already uses:
+ *   { publicKey: string | null, connected, connecting, connect(), disconnect() }
+ *
+ * Connect opens the wallet adapter modal so the user can pick a wallet.
  */
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { useCallback } from "react";
+import {
+  useWallet as useAdapterWallet,
+  type WalletContextState,
+} from "@solana/wallet-adapter-react";
+import { useWalletModal } from "@solana/wallet-adapter-react-ui";
+
+export { SolanaWalletProviders as WalletProvider } from "./wallet-providers";
 
 interface WalletState {
   publicKey: string | null;
@@ -14,62 +25,34 @@ interface WalletState {
   disconnect: () => void;
 }
 
-const WalletContext = createContext<WalletState | null>(null);
+export function useWallet(): WalletState {
+  const adapter: WalletContextState = useAdapterWallet();
+  const { setVisible } = useWalletModal();
 
-const STORAGE_KEY = "cloak_wallet_pubkey";
+  const connect = useCallback(async () => {
+    // If a wallet is already selected, try to connect directly; otherwise open the picker.
+    if (adapter.wallet && !adapter.connected) {
+      try {
+        await adapter.connect();
+        return;
+      } catch {
+        // fall through to modal
+      }
+    }
+    setVisible(true);
+  }, [adapter, setVisible]);
 
-function fakePubkey(): string {
-  const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-  const arr = new Uint8Array(44);
-  crypto.getRandomValues(arr);
-  let out = "";
-  for (let i = 0; i < 44; i++) out += alphabet[arr[i] % alphabet.length];
-  return out;
-}
+  const disconnect = useCallback(() => {
+    void adapter.disconnect();
+  }, [adapter]);
 
-export function WalletProvider({ children }: { children: ReactNode }) {
-  const [publicKey, setPublicKey] = useState<string | null>(null);
-  const [connecting, setConnecting] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const saved = window.localStorage.getItem(STORAGE_KEY);
-    if (saved) setPublicKey(saved);
-  }, []);
-
-  const connect = async () => {
-    setConnecting(true);
-    await new Promise((r) => setTimeout(r, 600));
-    const key = fakePubkey();
-    window.localStorage.setItem(STORAGE_KEY, key);
-    setPublicKey(key);
-    setConnecting(false);
+  return {
+    publicKey: adapter.publicKey ? adapter.publicKey.toBase58() : null,
+    connected: adapter.connected,
+    connecting: adapter.connecting,
+    connect,
+    disconnect,
   };
-
-  const disconnect = () => {
-    window.localStorage.removeItem(STORAGE_KEY);
-    setPublicKey(null);
-  };
-
-  return (
-    <WalletContext.Provider
-      value={{
-        publicKey,
-        connected: !!publicKey,
-        connecting,
-        connect,
-        disconnect,
-      }}
-    >
-      {children}
-    </WalletContext.Provider>
-  );
-}
-
-export function useWallet() {
-  const ctx = useContext(WalletContext);
-  if (!ctx) throw new Error("useWallet must be used inside WalletProvider");
-  return ctx;
 }
 
 export function shortAddress(addr: string, chars = 4): string {
