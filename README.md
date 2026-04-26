@@ -66,8 +66,9 @@ src/lib/cloak/
 | Stealth address per link (`generateUtxoKeypair`) | ✅ Real SDK |
 | Viewing key generation                    | ✅ Real SDK   |
 | Amount/format utilities                   | ✅ Real SDK   |
+| Wallet connect (Phantom, Solflare)        | ✅ Real `@solana/wallet-adapter-react` |
 | ZK proof generation                       | ⏳ Simulated timing — to enable, replace `submitOnChain()` in `mock-service.ts` with `transact()` from `@cloak.dev/sdk` |
-| On-chain submission                       | ⏳ Simulated signature — needs a funded wallet (devnet/mainnet) and `@solana/wallet-adapter-react` |
+| On-chain submission                       | ⏳ Simulated signature — needs a funded wallet (devnet/mainnet) |
 
 This split is intentional: every part of the stack that *encodes the privacy
 model* is real Cloak; the only mock is the actual on-chain hop, which
@@ -97,31 +98,62 @@ cd cloakpay
 # 2. Install
 bun install        # or: npm install / pnpm install
 
-# 3. Dev server
+# 3. Environment (optional — defaults to Solana devnet)
+cp .env.example .env
+
+# 4. Dev server
 bun dev            # http://localhost:5173
 
-# 4. Production build
+# 5. Production build
 bun run build
-bun run start
+bun run preview
 ```
 
-No environment variables are required to demo the privacy flow — the Cloak
-SDK derives keys client-side and the demo persists state in `localStorage`.
+### Environment variables
 
-To enable real on-chain submission later:
+| Variable               | Default                          | Notes                                       |
+| ---------------------- | -------------------------------- | ------------------------------------------- |
+| `VITE_SOLANA_NETWORK`  | `devnet`                         | `devnet` \| `testnet` \| `mainnet-beta`     |
+| `VITE_SOLANA_RPC_URL`  | (cluster default)                | Custom RPC (Helius, QuickNode, Triton, …)   |
 
-1. Add a real wallet adapter:
-   ```bash
-   bun add @solana/wallet-adapter-react @solana/wallet-adapter-react-ui \
-           @solana/wallet-adapter-wallets
-   ```
-2. Replace the body of `submitOnChain()` in `src/lib/cloak/mock-service.ts`
-   with the real flow from
-   [docs.cloak.ag/sdk/quickstart](https://docs.cloak.ag/sdk/quickstart):
-   `createDepositInstruction → sendTransaction` for deposits, `transact`
-   for shielded transfers.
-3. Set `CLOAK_NETWORK=mainnet-beta` (or `devnet`) and pass a `Connection`
-   instance into the service constructor.
+### Test with a real wallet
+
+1. Install [Phantom](https://phantom.app/) or [Solflare](https://solflare.com/).
+2. Switch the wallet's network to **Devnet**.
+3. Get free devnet SOL: <https://faucet.solana.com>.
+4. Click "Connect wallet" → CloakPay will prompt the wallet popup.
+
+---
+
+## 4b. Deploy on Vercel
+
+This app is configured for **static (SPA) deployment** on Vercel — no
+serverless functions needed (the Cloak SDK and wallet adapter are 100%
+client-side).
+
+```bash
+# 1. Push to GitHub (use the Lovable "Connect to GitHub" button, then push).
+
+# 2. On vercel.com → Add New Project → Import the repo.
+#    Vercel will auto-detect `vercel.json`:
+#      - Build command:    bun run build
+#      - Output directory: dist
+#      - Install command:  bun install
+
+# 3. (Optional) Set env vars in Project Settings → Environment Variables:
+#      VITE_SOLANA_NETWORK = devnet
+#      VITE_SOLANA_RPC_URL = <your RPC, optional>
+
+# 4. Deploy. SPA fallback is handled by `vercel.json` rewrites so deep links
+#    like /pay/abc123 work on refresh.
+```
+
+To enable real on-chain submission later, replace the body of
+`submitOnChain()` in `src/lib/cloak/mock-service.ts` with the real flow
+from [docs.cloak.ag/sdk/quickstart](https://docs.cloak.ag/sdk/quickstart):
+`createDepositInstruction → sendTransaction` for deposits, `transact`
+for shielded transfers. The wallet is already wired via
+`@solana/wallet-adapter-react`.
 
 ---
 
