@@ -448,10 +448,17 @@ function bigintToBytes32(value: bigint): Uint8Array {
 export const cloakSdkService: CloakService = new CloakSdkService();
 export const mockCloakService = cloakSdkService; // kept for back-compat imports
 
-/** Real SDK utilities surfaced for UI use (explorer links, fee display). */
+/**
+ * Async accessors for SDK utilities. Loading lazily keeps the SDK off the
+ * SSR/initial bundle. Unused by current UI but kept on the public surface
+ * so future screens (explorer links, fee display) can opt in.
+ */
 export const cloakUtils = {
-  formatAmount,
-  getExplorerUrl,
-  LAMPORTS_PER_SOL,
-  isValidSolanaAddress,
+  formatAmount: async (...args: Parameters<CloakSdk["formatAmount"]>) =>
+    (await loadSdk()).formatAmount(...args),
+  getExplorerUrl: async (...args: Parameters<CloakSdk["getExplorerUrl"]>) =>
+    (await loadSdk()).getExplorerUrl(...args),
+  isValidSolanaAddress: async (addr: string) =>
+    (await loadSdk()).isValidSolanaAddress(addr),
+  getLamportsPerSol: async () => (await loadSdk()).LAMPORTS_PER_SOL,
 };
