@@ -211,6 +211,14 @@ function Dashboard() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      onClick={() => setShareLinkId(link.id)}
+                      aria-label="Share with QR code"
+                    >
+                      <Share2 className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => copyLink(link.id)}
                       aria-label="Copy link"
                     >
@@ -228,7 +236,7 @@ function Dashboard() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => linksStore.remove(link.id)}
+                      onClick={() => removeLink(link)}
                       aria-label="Delete link"
                     >
                       <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
@@ -240,6 +248,33 @@ function Dashboard() {
           )}
         </div>
       </main>
+
+      {/* Share dialog */}
+      <Dialog open={!!sharedLink} onOpenChange={(open) => !open && setShareLinkId(null)}>
+        <DialogContent className="max-w-md bg-card border-border-strong">
+          <DialogHeader>
+            <DialogTitle className="font-display">Share payment link</DialogTitle>
+            <DialogDescription>
+              {sharedLink && (
+                <>
+                  Request{" "}
+                  <span className="font-medium text-foreground">
+                    {sharedLink.amount.toFixed(2)} {sharedLink.token}
+                  </span>{" "}
+                  privately.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          {sharedLink && (
+            <div className="mt-2">
+              <ShareLink
+                url={`${typeof window !== "undefined" ? window.location.origin : ""}/pay/${sharedLink.id}`}
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
