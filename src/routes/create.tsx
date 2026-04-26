@@ -9,7 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Lock, Check, Copy } from "lucide-react";
+import { ShareLink } from "@/components/ShareLink";
+import { ArrowLeft, Lock, CheckCircle2, Sparkles } from "lucide-react";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/create")({
   head: () => ({
