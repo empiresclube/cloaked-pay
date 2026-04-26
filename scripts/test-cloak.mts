@@ -1,0 +1,10 @@
+import { generateUtxoKeypair, generateCloakKeys, formatAmount, LAMPORTS_PER_SOL, getExplorerUrl, isValidSolanaAddress, VERSION } from "@cloak.dev/sdk";
+console.log("SDK VERSION:", VERSION);
+console.log("LAMPORTS_PER_SOL:", LAMPORTS_PER_SOL);
+console.log("formatAmount(1500000):", formatAmount(1500000n));
+console.log("isValid:", isValidSolanaAddress("11111111111111111111111111111111"));
+const utxo = await generateUtxoKeypair();
+console.log("UTXO keypair keys:", Object.keys(utxo));
+const cloakKeys = await generateCloakKeys();
+console.log("Cloak keys keys:", Object.keys(cloakKeys));
+console.log("explorer:", getExplorerUrl("5xYsig"));
