@@ -6,6 +6,14 @@ import { linksStore } from "@/lib/storage";
 import type { PaymentLink } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { ShareLink } from "@/components/ShareLink";
+import {
   Plus,
   Link as LinkIcon,
   Copy,
@@ -14,7 +22,9 @@ import {
   Lock,
   Trash2,
   ArrowUpRight,
+  Share2,
 } from "lucide-react";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
@@ -41,6 +51,8 @@ function Dashboard() {
     return () => window.removeEventListener("cloak:links-updated", refresh);
   }, [publicKey]);
 
+  const [shareLinkId, setShareLinkId] = useState<string | null>(null);
+  const sharedLink = shareLinkId ? links.find((l) => l.id === shareLinkId) : null;
   if (!connected) {
     return (
       <div className="min-h-screen bg-background">
@@ -59,6 +71,7 @@ function Dashboard() {
             className="mt-8"
             onClick={async () => {
               await connect();
+              toast.success("Wallet connected");
               navigate({ to: "/dashboard" });
             }}
             disabled={connecting}
@@ -79,7 +92,15 @@ function Dashboard() {
     const url = `${window.location.origin}/pay/${id}`;
     navigator.clipboard.writeText(url);
     setCopiedId(id);
+    toast.success("Link copied to clipboard");
     setTimeout(() => setCopiedId(null), 1500);
+  };
+
+  const removeLink = (link: PaymentLink) => {
+    linksStore.remove(link.id);
+    toast("Link deleted", {
+      description: `${link.amount.toFixed(2)} ${link.token} request removed.`,
+    });
   };
 
   return (
@@ -190,6 +211,14 @@ function Dashboard() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      onClick={() => setShareLinkId(link.id)}
+                      aria-label="Share with QR code"
+                    >
+                      <Share2 className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => copyLink(link.id)}
                       aria-label="Copy link"
                     >
@@ -207,7 +236,7 @@ function Dashboard() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => linksStore.remove(link.id)}
+                      onClick={() => removeLink(link)}
                       aria-label="Delete link"
                     >
                       <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
@@ -219,6 +248,33 @@ function Dashboard() {
           )}
         </div>
       </main>
+
+      {/* Share dialog */}
+      <Dialog open={!!sharedLink} onOpenChange={(open) => !open && setShareLinkId(null)}>
+        <DialogContent className="max-w-md bg-card border-border-strong">
+          <DialogHeader>
+            <DialogTitle className="font-display">Share payment link</DialogTitle>
+            <DialogDescription>
+              {sharedLink && (
+                <>
+                  Request{" "}
+                  <span className="font-medium text-foreground">
+                    {sharedLink.amount.toFixed(2)} {sharedLink.token}
+                  </span>{" "}
+                  privately.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          {sharedLink && (
+            <div className="mt-2">
+              <ShareLink
+                url={`${typeof window !== "undefined" ? window.location.origin : ""}/pay/${sharedLink.id}`}
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
