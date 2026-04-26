@@ -1,87 +1,60 @@
-# Deploy na Vercel — Cloak Track
+## Problema
 
-## Contexto
-
-O projeto hoje está configurado para **Cloudflare Workers** (via `@cloudflare/vite-plugin` + `wrangler.jsonc`) porque o ambiente Lovable usa Workers como runtime de SSR. Para subir na **Vercel** precisamos:
-
-1. Adicionar suporte ao runtime Vercel (Node/Edge) sem remover o config atual.
-2. Garantir que a wallet real (Phantom/Solflare) seja carregada no cliente.
-3. Documentar o passo a passo de deploy.
-
-Decisão importante: o TanStack Start oficialmente roda na Vercel via **Vercel Functions (Node runtime)**. Como nosso uso de "backend" hoje é mínimo (tudo é client-side: Cloak SDK, wallet, localStorage), podemos simplificar e fazer **deploy estático** na Vercel servindo apenas o build do cliente — isso elimina qualquer incompatibilidade Worker/Node e funciona out-of-the-box com wallets reais.
-
-## Estratégia escolhida: deploy estático (SPA na Vercel)
-
-Vantagens:
-- Zero configuração de runtime serverless.
-- Funciona com qualquer wallet adapter (tudo client-side).
-- Cloak SDK já roda só no browser (lazy load via `loadSdk()`).
-- Build mais rápido e barato.
-
-Trade-off: SSR é desabilitado. Como o app é uma dApp (precisa de wallet conectada para qualquer coisa útil), SSR não agrega valor real aqui.
-
-## O que será feito
-
-### 1. Integração de wallet real (Solana Wallet Adapter)
-
-Substituir o mock em `src/lib/wallet.tsx` por integração real com:
-- `@solana/wallet-adapter-react`
-- `@solana/wallet-adapter-react-ui`
-- `@solana/wallet-adapter-wallets` (Phantom, Solflare)
-- `@solana/wallet-adapter-base`
-
-Manter a mesma API pública (`useWallet()`, `publicKey`, `connect`, `disconnect`) para não quebrar componentes existentes (`Header`, `create.tsx`, `pay.$id.tsx`, `dashboard.tsx`).
-
-Configurar para **devnet** (faz sentido pra teste) com endpoint configurável via env.
-
-### 2. Configuração para Vercel
-
-Criar:
-- `vercel.json` com rewrite SPA (`/* → /index.html`) para que o roteamento client-side do TanStack Router funcione em refresh/deep links.
-- `.env.example` documentando `VITE_SOLANA_NETWORK` e `VITE_SOLANA_RPC_URL`.
-
-Ajustar `vite.config.ts` para gerar build estático (`outDir: dist`, sem o plugin Cloudflare quando rodar fora do Lovable). O ambiente Lovable continua funcionando porque o config detecta automaticamente.
-
-### 3. README atualizado
-
-Adicionar seção "Deploy na Vercel" com:
-- `git push` para um repositório.
-- Importar o repo na Vercel.
-- Build command: `bun run build`.
-- Output directory: `dist`.
-- Variáveis de ambiente recomendadas.
-- Como testar com Phantom em devnet (link do faucet).
-
-## Detalhes técnicos
-
-### Arquivos novos
-- `vercel.json` — rewrites para SPA.
-- `.env.example` — `VITE_SOLANA_NETWORK=devnet`, `VITE_SOLANA_RPC_URL=https://api.devnet.solana.com`.
-- `src/lib/wallet-providers.tsx` — wrapper com `ConnectionProvider` + `WalletProvider` + `WalletModalProvider` do adapter UI.
-
-### Arquivos editados
-- `src/lib/wallet.tsx` — re-exportar `useWallet` do adapter, mantendo helpers (`shortAddress`, `connected`, etc).
-- `src/routes/__root.tsx` — envolver `<Outlet/>` com `<WalletProviders>`.
-- `src/components/Header.tsx` — usar `<WalletMultiButton>` do adapter (mantém visual atual via wrapper customizado).
-- `package.json` — adicionar dependências do wallet adapter.
-- `README.md` — instruções de deploy Vercel + teste com Phantom.
-
-### Pacotes a instalar
+A build da Vercel falhou com:
 ```
-@solana/wallet-adapter-base
-@solana/wallet-adapter-react
-@solana/wallet-adapter-react-ui
-@solana/wallet-adapter-wallets
+Error: api/index.mjs: unsupported "runtime" value in 'config'
 ```
 
-## Verificação após implementação
+A Vercel não aceita mais `runtime: "nodejs20.x"` no formato que usamos. Mais importante: a abordagem atual (criar manualmente `api/index.mjs` para fazer ponte entre o handler `fetch` do TanStack e a runtime Node da Vercel) é frágil e desnecessária — a documentação oficial da Vercel recomenda usar o adapter **Nitro**, que gera a função serverless automaticamente no formato correto.
 
-1. `bun run build` gera `dist/` sem erros.
-2. Preview Lovable continua funcionando.
-3. Localmente, `bun run preview` abre o app e o botão "Connect Wallet" mostra o modal do Phantom.
-4. Deploy na Vercel: criar link de pagamento → abrir `/pay/{id}` em outro browser com Phantom → confirmar fluxo.
+## Solução
 
-## Fora de escopo (próximo passo separado)
+Trocar o bridge manual pelo adapter oficial Nitro, conforme a doc da Vercel para TanStack Start.
 
-- Integração on-chain real (assinar e enviar transação Solana com SOL devnet). Hoje `submitOnChain` ainda é simulado. Posso fazer depois que confirmarmos que wallet + UI estão funcionando na Vercel.
-- Conectar repo ao GitHub (você faz pelo botão do Lovable; depois eu te guio na Vercel).
+### Mudanças
+
+1. **Adicionar dependência `nitro`** (`bun add nitro`).
+
+2. **Atualizar `vite.config.ts`**: quando `DEPLOY_TARGET=vercel`, ativar o plugin Nitro com preset Vercel. Continua desativando o plugin Cloudflare nesse caso. Para a preview do Lovable e para Cloudflare, nada muda.
+
+3. **Apagar `api/index.mjs`** — não é mais necessário, o Nitro gera a função sozinho em `.vercel/output/functions/`.
+
+4. **Simplificar `vercel.json`**: remover `outputDirectory`, `functions` e `rewrites` manuais. O Nitro emite o formato Build Output API v3 da Vercel, que a plataforma detecta automaticamente. O arquivo passa a conter só o `buildCommand` e `installCommand`.
+
+5. **Atualizar `README.md`** com as instruções corretas (sem menção ao bridge manual).
+
+### Como fica o `vercel.json`
+
+```json
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "DEPLOY_TARGET=vercel bun run build",
+  "installCommand": "bun install"
+}
+```
+
+### Como fica o `vite.config.ts`
+
+```ts
+import { defineConfig } from "@lovable.dev/vite-tanstack-config";
+import { nitro } from "nitro/vite";
+
+const isVercel = process.env.DEPLOY_TARGET === "vercel" || !!process.env.VERCEL;
+
+export default defineConfig({
+  cloudflare: isVercel ? false : undefined,
+  plugins: isVercel ? [nitro({ config: { preset: "vercel" } })] : [],
+});
+```
+
+## O que NÃO muda
+
+- Preview do Lovable continua igual (Cloudflare Workers).
+- Integração de wallets reais (`@solana/wallet-adapter`) e o resto do app não são afetados.
+- Variáveis de ambiente Vercel (`VITE_SOLANA_NETWORK`, `VITE_SOLANA_RPC_URL`) continuam iguais.
+
+## Próximos passos depois do deploy
+
+1. Push do código para o GitHub.
+2. Re-deploy automático na Vercel (ela detecta o novo `vercel.json`).
+3. Testar com Phantom/Solflare em devnet.
