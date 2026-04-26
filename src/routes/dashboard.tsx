@@ -51,6 +51,8 @@ function Dashboard() {
     return () => window.removeEventListener("cloak:links-updated", refresh);
   }, [publicKey]);
 
+  const [shareLinkId, setShareLinkId] = useState<string | null>(null);
+  const sharedLink = shareLinkId ? links.find((l) => l.id === shareLinkId) : null;
   if (!connected) {
     return (
       <div className="min-h-screen bg-background">
@@ -69,6 +71,7 @@ function Dashboard() {
             className="mt-8"
             onClick={async () => {
               await connect();
+              toast.success("Wallet connected");
               navigate({ to: "/dashboard" });
             }}
             disabled={connecting}
@@ -89,7 +92,15 @@ function Dashboard() {
     const url = `${window.location.origin}/pay/${id}`;
     navigator.clipboard.writeText(url);
     setCopiedId(id);
+    toast.success("Link copied to clipboard");
     setTimeout(() => setCopiedId(null), 1500);
+  };
+
+  const removeLink = (link: PaymentLink) => {
+    linksStore.remove(link.id);
+    toast("Link deleted", {
+      description: `${link.amount.toFixed(2)} ${link.token} request removed.`,
+    });
   };
 
   return (
