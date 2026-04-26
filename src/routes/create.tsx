@@ -31,14 +31,17 @@ function CreatePage() {
   const [token, setToken] = useState<TokenSymbol>("USDC");
   const [description, setDescription] = useState("");
   const [created, setCreated] = useState<PaymentLink | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   if (!connected) {
     return (
       <div className="min-h-screen bg-background">
         <Header />
         <div className="mx-auto max-w-md px-6 py-32 text-center">
-          <h1 className="font-display text-2xl font-semibold">Connect first</h1>
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Lock className="h-5 w-5" />
+          </div>
+          <h1 className="mt-6 font-display text-2xl font-semibold">Connect first</h1>
           <p className="mt-2 text-muted-foreground">
             Connect your wallet to create payment links.
           </p>
@@ -48,6 +51,7 @@ function CreatePage() {
             className="mt-6"
             onClick={async () => {
               await connect();
+              toast.success("Wallet connected");
               navigate({ to: "/create" });
             }}
             disabled={connecting}
@@ -59,10 +63,16 @@ function CreatePage() {
     );
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const amt = parseFloat(amount);
-    if (!amt || amt <= 0 || !publicKey) return;
+    if (!amt || amt <= 0 || !publicKey) {
+      toast.error("Enter an amount", { description: "Amount must be greater than zero." });
+      return;
+    }
+    setSubmitting(true);
+    // brief artificial latency for tactility (real op is instant)
+    await new Promise((r) => setTimeout(r, 350));
 
     const { stealthAddress, viewingKeyRef } = deriveStealthAddress(publicKey);
     const link: PaymentLink = {
@@ -78,14 +88,10 @@ function CreatePage() {
     };
     linksStore.create(link);
     setCreated(link);
-  };
-
-  const copyUrl = () => {
-    if (!created) return;
-    const url = `${window.location.origin}/pay/${created.id}`;
-    navigator.clipboard.writeText(url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    setSubmitting(false);
+    toast.success("Payment link created", {
+      description: `Ready to receive ${amt.toFixed(2)} ${token} privately.`,
+    });
   };
 
   if (created) {
@@ -93,34 +99,34 @@ function CreatePage() {
     return (
       <div className="min-h-screen bg-background">
         <Header />
-        <main className="mx-auto max-w-xl px-6 py-16">
-          <div className="rounded-2xl border border-border bg-gradient-card p-8 text-center shadow-elegant">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-success/15 text-success">
-              <Check className="h-6 w-6" />
-            </div>
-            <h1 className="mt-6 font-display text-2xl font-semibold">Link ready to share</h1>
-            <p className="mt-2 text-muted-foreground">
-              Share this link to receive {created.amount.toFixed(2)} {created.token} privately.
-            </p>
-
-            <div className="mt-8 flex items-center gap-2 rounded-xl border border-border bg-background/60 p-2">
-              <code className="flex-1 truncate px-3 text-left text-sm">{url}</code>
-              <Button onClick={copyUrl} variant={copied ? "soft" : "default"} size="sm">
-                {copied ? (
-                  <>
-                    <Check className="h-3.5 w-3.5" /> Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-3.5 w-3.5" /> Copy
-                  </>
-                )}
-              </Button>
+        <main className="mx-auto max-w-xl px-6 py-12 md:py-16">
+          <div className="rounded-2xl border border-border bg-gradient-card p-6 md:p-8 shadow-elegant">
+            <div className="flex flex-col items-center text-center">
+              <div className="relative flex h-14 w-14 items-center justify-center">
+                <div className="absolute inset-0 rounded-full bg-success/20 animate-pulse-glow" />
+                <div className="relative flex h-12 w-12 items-center justify-center rounded-full bg-success/15 text-success">
+                  <CheckCircle2 className="h-6 w-6" strokeWidth={2.25} />
+                </div>
+              </div>
+              <h1 className="mt-5 font-display text-2xl font-semibold">Your link is live</h1>
+              <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+                Anyone with this link can pay you{" "}
+                <span className="font-medium text-foreground">
+                  {created.amount.toFixed(2)} {created.token}
+                </span>{" "}
+                privately. You'll see it here when it's paid.
+              </p>
             </div>
 
-            <div className="mt-8 flex gap-3 justify-center">
+            <div className="mt-8">
+              <ShareLink url={url} />
+            </div>
+
+            <div className="mt-8 flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
               <Button asChild variant="ghost">
-                <Link to="/dashboard">Back to dashboard</Link>
+                <Link to="/dashboard">
+                  <ArrowLeft className="h-4 w-4" /> Back to dashboard
+                </Link>
               </Button>
               <Button asChild variant="hero">
                 <Link to="/pay/$id" params={{ id: created.id }}>
