@@ -2,6 +2,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useWallet, shortAddress } from "@/lib/wallet";
 import { Button } from "@/components/ui/button";
 import { Shield, LogOut } from "lucide-react";
+import { toast } from "sonner";
 
 export function Header() {
   const { connected, publicKey, connect, connecting, disconnect } = useWallet();
@@ -9,7 +10,13 @@ export function Header() {
 
   const handleConnect = async () => {
     await connect();
+    toast.success("Wallet connected", { description: "You're ready to send and receive privately." });
     navigate({ to: "/dashboard" });
+  };
+
+  const handleDisconnect = () => {
+    disconnect();
+    toast("Wallet disconnected");
   };
 
   return (
