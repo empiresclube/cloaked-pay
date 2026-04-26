@@ -127,26 +127,30 @@ bun run preview
 
 ## 4b. Deploy on Vercel
 
-This app is configured for **static (SPA) deployment** on Vercel — no
-serverless functions needed (the Cloak SDK and wallet adapter are 100%
-client-side).
+The repo includes a `vercel.json` and a `api/index.mjs` adapter that bridges
+the TanStack Start SSR output to Vercel's Node serverless runtime.
 
-```bash
-# 1. Push to GitHub (use the Lovable "Connect to GitHub" button, then push).
+**Steps:**
 
-# 2. On vercel.com → Add New Project → Import the repo.
-#    Vercel will auto-detect `vercel.json`:
-#      - Build command:    bun run build
-#      - Output directory: dist
-#      - Install command:  bun install
+1. **Push to GitHub** — use the Lovable "Connect to GitHub" button, then push.
+2. **Import on Vercel** — vercel.com → Add New Project → pick the repo.
+   Vercel auto-detects `vercel.json`. Defaults set in the file:
+   - Install command: `bun install`
+   - Build command:   `DEPLOY_TARGET=vercel bun run build`
+   - Output dir:      `dist/client` (static assets)
+   - Function:        `api/index.mjs` (SSR handler, Node 20)
+3. **Env vars** (Project Settings → Environment Variables):
+   - `VITE_SOLANA_NETWORK = devnet`
+   - `VITE_SOLANA_RPC_URL = <optional custom RPC>`
+4. **Deploy** — first deploy takes ~2 min. Deep links (`/pay/abc123`) and
+   page refreshes work because the rewrite in `vercel.json` routes every
+   non-asset request to the SSR handler.
 
-# 3. (Optional) Set env vars in Project Settings → Environment Variables:
-#      VITE_SOLANA_NETWORK = devnet
-#      VITE_SOLANA_RPC_URL = <your RPC, optional>
+**How the build switch works:** `vite.config.ts` reads `DEPLOY_TARGET=vercel`
+(or the auto-set `VERCEL=1` env var) and tells TanStack Start to use the
+`vercel` target instead of the default Cloudflare Worker target used inside
+Lovable. The Lovable preview keeps using Cloudflare with no changes.
 
-# 4. Deploy. SPA fallback is handled by `vercel.json` rewrites so deep links
-#    like /pay/abc123 work on refresh.
-```
 
 To enable real on-chain submission later, replace the body of
 `submitOnChain()` in `src/lib/cloak/mock-service.ts` with the real flow
