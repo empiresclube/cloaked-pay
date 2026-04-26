@@ -454,11 +454,20 @@ export const mockCloakService = cloakSdkService; // kept for back-compat imports
  * so future screens (explorer links, fee display) can opt in.
  */
 export const cloakUtils = {
-  formatAmount: async (...args: Parameters<CloakSdk["formatAmount"]>) =>
-    (await loadSdk()).formatAmount(...args),
-  getExplorerUrl: async (...args: Parameters<CloakSdk["getExplorerUrl"]>) =>
-    (await loadSdk()).getExplorerUrl(...args),
-  isValidSolanaAddress: async (addr: string) =>
-    (await loadSdk()).isValidSolanaAddress(addr),
-  getLamportsPerSol: async () => (await loadSdk()).LAMPORTS_PER_SOL,
+  formatAmount: async (amount: bigint | number, decimals?: number) => {
+    const sdk = await loadSdk();
+    return sdk.formatAmount(amount as never, decimals as never);
+  },
+  getExplorerUrl: async (signature: string, cluster?: string) => {
+    const sdk = await loadSdk();
+    return sdk.getExplorerUrl(signature as never, cluster as never);
+  },
+  isValidSolanaAddress: async (addr: string) => {
+    const sdk = await loadSdk();
+    return sdk.isValidSolanaAddress(addr);
+  },
+  getLamportsPerSol: async () => {
+    const sdk = await loadSdk();
+    return sdk.LAMPORTS_PER_SOL;
+  },
 };
