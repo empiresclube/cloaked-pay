@@ -6,6 +6,14 @@ import { linksStore } from "@/lib/storage";
 import type { PaymentLink } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { ShareLink } from "@/components/ShareLink";
+import {
   Plus,
   Link as LinkIcon,
   Copy,
@@ -14,7 +22,9 @@ import {
   Lock,
   Trash2,
   ArrowUpRight,
+  Share2,
 } from "lucide-react";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
