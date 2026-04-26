@@ -150,11 +150,15 @@ function CreatePage() {
           </Link>
         </Button>
 
-        <h1 className="font-display text-3xl font-semibold tracking-tight">
-          Create a payment link
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Sparkles className="h-3 w-3 text-primary" />
+          New payment link
+        </div>
+        <h1 className="mt-2 font-display text-3xl font-semibold tracking-tight">
+          How much would you like to receive?
         </h1>
         <p className="mt-2 text-muted-foreground">
-          Set how much you want to receive. We'll handle the privacy.
+          We'll generate a private link your customer can pay in one tap.
         </p>
 
         <form
@@ -231,9 +235,16 @@ function CreatePage() {
               variant="hero"
               size="xl"
               className="w-full"
-              disabled={!amount || parseFloat(amount) <= 0}
+              disabled={!amount || parseFloat(amount) <= 0 || submitting}
             >
-              Create payment link
+              {submitting ? (
+                <>
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  Generating private link…
+                </>
+              ) : (
+                "Create payment link"
+              )}
             </Button>
           </div>
         </form>
