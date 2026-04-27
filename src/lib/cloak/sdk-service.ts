@@ -83,6 +83,10 @@ function resolveRpcUrl(): string {
 function resolveRelayUrl(): string {
   const custom = import.meta.env.VITE_CLOAK_RELAY_URL as string | undefined;
   if (custom && custom.length > 0) return custom;
+  // Browser calls to the Cloak devnet relay do not include CORS headers for
+  // Lovable preview domains, so route them through our same-origin public
+  // proxy. The proxy only forwards to the official Cloak devnet relay.
+  if (typeof window !== "undefined") return "/api/public/cloak";
   return "https://api.devnet.cloak.ag";
 }
 
