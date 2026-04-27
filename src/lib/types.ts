@@ -22,9 +22,18 @@ export interface PaymentLink {
   stealthAddress: string;
   /** Encrypted memo / viewing key reference (placeholder for real Cloak data). */
   viewingKeyRef: string;
+  /**
+   * Cloak UTXO public key (hex bigint) the payer should deposit into.
+   * Generated client-side at link creation; the matching private key stays
+   * in the merchant's localStorage so they can later withdraw.
+   */
+  merchantUtxoPubkeyHex?: string;
   // Set when paid
   paidAt?: number;
   txSignature?: string;
+  /** Withdraw signature once the merchant pulls funds out of the shielded pool. */
+  withdrawSignature?: string;
+  withdrawnAt?: number;
   /** Owner wallet (creator). */
   owner: string;
 }
