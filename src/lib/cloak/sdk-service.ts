@@ -154,9 +154,9 @@ function extractMessage(e: unknown): string {
   if (err.logs?.length) parts.push(`logs: ${err.logs.slice(-2).join(" | ")}`);
 
   const inner =
-    (err.originalError && extractMessage(err.originalError)) ||
-    (err.cause && extractMessage(err.cause)) ||
-    (err.error && extractMessage(err.error));
+    (err.originalError ? extractMessage(err.originalError) : "") ||
+    (err.cause ? extractMessage(err.cause) : "") ||
+    (err.error ? extractMessage(err.error) : "");
   if (inner && !parts.join(" ").includes(inner)) parts.push(`→ ${inner}`);
 
   const out = parts.filter(Boolean).join(" ").trim();
