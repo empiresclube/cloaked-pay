@@ -2,7 +2,8 @@
  * Real Cloak SDK service — devnet.
  *
  * Implements `CloakService` using the high-level `CloakSDK` class from
- * `@cloak.dev/sdk`. This is the runtime path used after a wallet connects.
+ * `@cloak.dev/sdk-devnet` (devnet program ID `Zc1k…` + relay `api.devnet.cloak.ag`).
+ * This is the runtime path used after a wallet connects.
  *
  * Privacy model (per Cloak docs):
  *   - A *note* is a private commitment created from a wallet's spend key.
@@ -29,7 +30,7 @@ import type {
   CloakNote,
   Network,
   WalletAdapter,
-} from "@cloak.dev/sdk";
+} from "@cloak.dev/sdk-devnet";
 import { Connection, PublicKey } from "@solana/web3.js";
 
 import "./buffer-polyfill";
@@ -51,13 +52,13 @@ import type { TokenSymbol } from "../types";
 
 /* ─────────────────────────────────────────────────── Lazy SDK loader ── */
 
-type CloakSdkModule = typeof import("@cloak.dev/sdk");
+type CloakSdkModule = typeof import("@cloak.dev/sdk-devnet");
 let sdkModulePromise: Promise<CloakSdkModule> | null = null;
 
 async function loadSdk(): Promise<CloakSdkModule> {
   if (!sdkModulePromise) {
     await import("./buffer-polyfill");
-    sdkModulePromise = import("@cloak.dev/sdk");
+    sdkModulePromise = import("@cloak.dev/sdk-devnet");
   }
   return sdkModulePromise;
 }

@@ -1,116 +1,121 @@
-# Tornar o CloakPay 100% funcional na devnet
+## Você está certo — usei o SDK errado
 
-## Diagnóstico
+A doc oficial (https://docs.cloak.ag/development/devnet) deixa claro que existe um pacote dedicado para devnet, com program ID, relay e API completamente diferentes do `@cloak.dev/sdk` que estamos usando hoje.
 
-Hoje a integração com Solana é **parcial**:
+| | Hoje (errado) | Correto p/ devnet |
+|---|---|---|
+| Pacote npm | `@cloak.dev/sdk` | `@cloak.dev/sdk-devnet` (0.1.5-devnet.0) |
+| Program ID | `zh1eLd6r…` (não existe em devnet) | `Zc1kHfp4rajSMeASFDwFFgkHRjv7dFQuLheJoQus27h` |
+| Relay | mainnet | `https://api.devnet.cloak.ag` |
+| API | classe `CloakSDK` (alto nível: `deposit`, `privateTransfer`, `withdraw`) | funções de baixo nível: `transact`, `createUtxo`, `createZeroUtxo`, `generateUtxoKeypair`, `getNkFromUtxoPrivateKey`, `swapWithChange` |
+| USDC | só mainnet | `DEVNET_MOCK_USDC_MINT` (mock USDC, 6 dec) com faucet HTTP |
 
-- ✅ Real: conexão de carteira (Phantom/Solflare), endpoint devnet, derivação de chaves Cloak, stealth address, viewing keys.
-- ❌ Simulado: `submitOnChain()` em `src/lib/cloak/mock-service.ts` apenas gera uma assinatura aleatória (`crypto.getRandomValues`) e mexe em `localStorage`. Nenhuma transação é enviada à Solana.
+Daí o erro "Deposit failed": estávamos chamando um programa que não existe em devnet.
 
-A SDK `@cloak.dev/sdk@0.1.5` expõe a classe `CloakSDK` com métodos `deposit`, `privateTransfer`, `withdraw`, `generateNote`, `loadNotes` que aceitam um `WalletAdapter` (modo browser) — exatamente o que já temos via `@solana/wallet-adapter-react`. Vamos plugar essa SDK por baixo da interface `CloakService` que o app já usa, sem mudar nenhum componente de UI.
+## O que vai mudar
 
-## Decisões importantes (e por quê)
+### Substituir o SDK
 
-1. **Apenas SOL na devnet.** O pool privado nativo da Cloak é em SOL. USDC só funciona via swap (mainnet) ou pool dedicada (mainnet). Em devnet, faz sentido travar o token suportado em SOL — é o único caminho que realmente fecha ponta a ponta sem dependências externas.
-2. **Modelo "uma nota por link de pagamento".** Diferente do desenho atual ("saldo blindado pessoal"), o fluxo natural da Cloak é: payer **gera uma nota** com o valor exato do link, **deposita** essa nota e na sequência **transfere** para o destinatário (`privateTransfer` ou `withdraw`). Isso bate 1:1 com payment links: cada link = uma nota. Removo a abstração de "saldo blindado acumulado", que era artefato do mock.
-3. **Persistência de notas.** Usar `LocalStorageAdapter` da própria SDK (já mencionado no código), para que o merchant veja o histórico real de pagamentos recebidos via `sdk.loadNotes()`.
-4. **Circuitos ZK.** A prova Groth16 é gerada no browser via snarkjs; a SDK baixa os circuitos do CDN padrão (`DEFAULT_CIRCUITS_URL`). Não precisa servir nada localmente.
-5. **Devnet por padrão.** `VITE_SOLANA_NETWORK=devnet` continua o default; não exigimos custom RPC.
+- Adicionar `@cloak.dev/sdk-devnet` (`bun add @cloak.dev/sdk-devnet`).
+- Remover `@cloak.dev/sdk` do `package.json` (não precisa mais — a troca para mainnet futura é uma simples mudança de import).
 
-## O que muda na UI (mínimo)
+### Reescrever `src/lib/cloak/sdk-service.ts`
 
-- Token selector em `/create` passa a oferecer **só SOL** (USDT/USDC ficam ocultos com tooltip "mainnet only").
-- Página de pagamento `/pay/$id`: o botão "Pay" dispara o fluxo real e mostra a assinatura **real** com link para `explorer.solana.com/tx/...?cluster=devnet`.
-- Dashboard: lista de pagamentos vem de `sdk.loadNotes()` filtrando por status `confirmed`, em vez de `localStorage` cru.
-- Aviso visível no header / dashboard: "Devnet · Pagamentos reais" para deixar claro que tudo é on-chain agora.
-
-## Mudanças técnicas (arquivo por arquivo)
-
-### Nova: `src/lib/cloak/sdk-service.ts`
-Implementa `CloakService` chamando a SDK real:
-- Construtor: instancia `new CloakSDK({ wallet, network, storage: new LocalStorageAdapter() })` lazy, recebendo o wallet adapter via setter (chamado pelo provider quando a wallet conecta).
-- `deposit({ payer, amount })` → `sdk.deposit(connection, amountLamports, { onProgress })`. Mapeia os `DepositStatus` da SDK para nossos `OperationPhase`.
-- `privateSend({ to, amount, autoDeposit })` → fluxo "uma nota":
-  1. `note = await sdk.generateNote(amountLamports)`
-  2. `await sdk.privateTransfer(connection, note, [{ recipient: toPubkey, amount }], { onProgress, onProofProgress })`
-  3. Retorna a `signature` real e `confirmedAt` real (do `slot`).
-- `withdraw({ owner, amount, to })` → carrega a nota do owner via `sdk.loadNotes()`, escolhe a primeira withdrawable e chama `sdk.withdraw(connection, note, recipient, { withdrawAll: true })`.
-- `getShieldedBalance(owner)` → soma `loadNotes()` filtradas por `network === "devnet"` e `!spent`.
-- `listNotes(owner)` → retorna `sdk.loadNotes()` mapeadas para nosso tipo `ShieldedNote`.
-
-### `src/lib/cloak/service.ts`
-Singleton agora retorna a nova `sdk-service` em vez do mock; expõe `setWalletAdapter(adapter)` e `setConnection(connection)` para o provider injetar.
-
-### `src/lib/cloak/provider.tsx`
-Dentro do `CloakProvider`, usa `useWallet()` (adapter direto) e `useConnection()` do `@solana/wallet-adapter-react` para chamar `getCloakService().setWalletAdapter(adapter)` e `setConnection(connection)` num `useEffect` toda vez que a wallet muda.
-
-### `src/lib/wallet.tsx`
-Expõe também o adapter cru (não só `publicKey`) para o Cloak provider conseguir passar `signTransaction`/`sendTransaction` para a SDK.
-
-### `src/routes/pay.$id.tsx`
-- Substitui o `privateSend` mockado pelo real.
-- Mapeia o `amount` do link → `lamports` via `parseAmount` da SDK.
-- No estado `success`, monta link com `getExplorerUrl(signature, "devnet")`.
-- Trata erros reais (`CloakError.category`): saldo insuficiente, RPC, prova, relay — mensagens amigáveis em vez de "Unknown error".
-
-### `src/routes/create.tsx`
-- Token select: SOL marcado e habilitado; USDC/USDT ficam disabled com badge "mainnet".
-- Valor mínimo: `MIN_DEPOSIT_LAMPORTS` da SDK = 0.01 SOL. Validação no form com mensagem clara.
-- Mostra a fee estimada (`calculateFee`) abaixo do input.
-
-### `src/routes/dashboard.tsx`
-- Lista pagamentos via `sdk.loadNotes()` em vez do `localStorage` interno do mock.
-- Mostra signature real com link para o explorer devnet.
-- Adiciona pill "Devnet" no header.
-
-### `src/lib/cloak/mock-service.ts`
-Mantido só como fallback de SSR (quando não há wallet) — devolve saldos zerados, lista vazia. Comentado no topo: "fallback SSR / pré-conexão; não usar em runtime conectado".
-
-### `src/components/Header.tsx`
-Adiciona badge "Devnet" pequena ao lado do botão de wallet quando `VITE_SOLANA_NETWORK=devnet`.
-
-### `README.md`
-Atualiza a tabela "real vs simulado" — todas as linhas viram ✅. Adiciona seção "Como testar":
-1. Phantom em devnet → faucet `https://faucet.solana.com` → ≥0.05 SOL.
-2. Conectar → `/create` → 0.01 SOL → copiar link.
-3. Abrir o link em outra janela (ou outra wallet) → "Pay" → confirmar no popup → ver tx no explorer devnet.
-
-## Diagrama do fluxo real (payment link)
+A API de devnet não tem `CloakSDK.privateTransfer`. O fluxo correto (da doc, seção "SOL shielded transfer") é:
 
 ```text
-Merchant (/create)                    Payer (/pay/$id)
-─────────────────                     ────────────────
-generate stealth address              connect wallet (devnet)
-   ↓                                     ↓
-save link in storage   ──share URL──▶ click "Pay 0.05 SOL"
-                                         ↓
-                                      sdk.generateNote(amount)
-                                         ↓
-                                      sdk.privateTransfer(
-                                        connection, note,
-                                        [{ recipient: stealth, amount }]
-                                      )
-                                         │
-                                         ├─ deposit tx → on-chain
-                                         ├─ Groth16 proof (browser)
-                                         ├─ relay submits withdraw
-                                         ▼
-                                      real signature
-                                         ↓
-                                      explorer.solana.com (devnet)
+payer (wallet conectada)        merchant (link de pagamento)
+─────────────────────────       ────────────────────────────
+1. generateUtxoKeypair          recipientUtxo (gerado quando o merchant criou o link
+   getNkFromUtxoPrivateKey       e codificado dentro do payment-link id)
+
+2. createUtxo(amount, payerUtxo, NATIVE_SOL_MINT)              ← deposit output
+   transact({ inputUtxos:[createZeroUtxo()], outputUtxos:[depositOutput],
+              externalAmount: amount, depositor: payer })       ← deposit on-chain
+   ⏳ aguardar ~20s para a commitment settlar
+
+3. recipientOut = createUtxo(amount, recipientUtxo, NATIVE_SOL_MINT)
+   transact({ inputUtxos:[shielded], outputUtxos:[recipientOut],
+              externalAmount: 0n }, { useUniqueNullifiers:true,
+              cachedMerkleTree: deposit.merkleTree })           ← shielded transfer via relay
+
+4. (opcional, lado merchant) withdraw da nota recebida para a wallet pública
+   via outro `transact` com externalAmount negativo + recipient ATA.
 ```
 
-## Riscos e mitigações
+Isso muda o desenho: **o link de pagamento precisa carregar o `utxoPubkey` do recipient** (não a stealth address Solana). O merchant gera `recipientUtxo = generateUtxoKeypair()` quando cria o link, guarda a `privateKey` no localStorage dele, e publica só a `publicKey` no link. O payer paga para essa pubkey shielded.
 
-- **Tamanho do bundle / proving no browser.** A SDK + snarkjs são pesados. Mitigação: o `loadSdk()` lazy já existe; o `CloakSDK` só é instanciado depois que a wallet conecta. SSR continua importando só os tipos.
-- **Buffer no client.** Já temos `buffer-polyfill.ts`. Garantimos que ele é importado antes de qualquer `CloakSDK`.
-- **Tempo da prova ZK.** Pode levar 5–30s no primeiro uso (download de circuitos). UI mostra progresso real via `onProofProgress` (porcentagem) em vez do `setTimeout` fake.
-- **Devnet faucet rate limit.** Sem mitigação no código — README destaca o uso do faucet oficial e link alternativo (`solfaucet.com`).
-- **Notas perdidas se o usuário limpar localStorage.** Adiciono no `/pay/$id` (callback `onNoteGenerated` da SDK) um aviso visível "salvando nota local" antes do submit, e mostro a nota como JSON copiável caso queira backup manual — mesma postura do exemplo oficial.
+### Arquivo por arquivo
+
+- **`src/lib/cloak/sdk-service.ts`** — reescrito do zero. Funções públicas:
+  - `createPaymentLinkUtxo()` — chamado em `/create`. Gera `generateUtxoKeypair()`, devolve `{ utxoPubkey, utxoPrivateKey, nk }` e persiste a privateKey + nk localmente atrelados ao id do link.
+  - `payToLink({ payerWallet, recipientUtxoPubkey, amount, onProgress })` — faz o deposit + shielded transfer para o utxo do merchant. Devolve as 2 signatures reais (deposit e transfer).
+  - `loadReceivedNotes(utxoPrivateKey, nk)` — usa a relay devnet (`/notes` ou varredura de eventos via SDK helper, conforme o que o pacote expor) para listar notas recebidas pelo utxo do merchant.
+  - `withdrawNote(note, toWallet)` — opcional, no dashboard, para o merchant sacar para a wallet pública dele.
+- **`src/lib/cloak/service.ts`** — cola adapter mantendo a interface `CloakService` que o resto da app já consome, mas chamando as novas funções acima.
+- **`src/lib/cloak/provider.tsx`** — passa `wallet` + `connection` para o service como já faz hoje.
+- **`src/lib/cloak/types.ts`** — adicionar campos `utxoPubkey` (base58) e `utxoNk` no tipo `PaymentLink` / `StealthAddress`.
+- **`src/lib/storage.ts`** — guardar `utxoPrivateKey`/`nk` por id de link (sensível: só fica na máquina do merchant).
+- **`src/routes/create.tsx`**:
+  - Habilitar **SOL** e **mock USDC** (ambos suportados em devnet); deixar USDT desabilitado com tooltip "mainnet only".
+  - Min 0.01 SOL ou 0.1 mock USDC.
+  - Botão "Get test USDC" que faz `POST https://devnet.cloak.ag/api/faucet` para a wallet conectada (rate limit 30s, 1000/req, 5000/24h por wallet — tudo da doc).
+  - Faucet de SOL: link para `https://faucet.solana.com`.
+- **`src/routes/pay.$id.tsx`**:
+  - Usa `payToLink()`. Mostra progresso real em 4 etapas: "Preparing UTXO" → "Depositing" → "Waiting for confirmation (~20s)" → "Shielded transfer".
+  - Em sucesso, mostra **2 signatures** (deposit + transfer) com link para `solscan.io/tx/<sig>?cluster=devnet`.
+  - Mensagens de erro humanizadas para casos típicos: saldo insuficiente, relay 429, deposit não confirmado, prova falhou.
+- **`src/routes/dashboard.tsx`**:
+  - Lista pagamentos lendo `loadReceivedNotes()` por link.
+  - Botão "Withdraw to wallet" por nota confirmada → `withdrawNote()` → signature real.
+  - Badge "Devnet" + aviso "valores são SOL/mock-USDC de teste".
+- **`src/components/Header.tsx`** — badge Devnet.
+- **`README.md`** — atualizar com:
+  - Pacote correto, program ID, relay devnet.
+  - Faucets (Solana + Cloak mock USDC).
+  - Fluxo de teste end-to-end com 2 wallets.
+
+### Arquivos removidos / desativados
+
+- `src/lib/cloak/mock-service.ts` — fica só como fallback SSR (sem wallet conectada), retornando estruturas vazias. Mensagem no topo: "não usar em runtime".
+
+## Diagrama do fluxo final em devnet
+
+```text
+MERCHANT (/create)                          PAYER (/pay/$id)
+─────────────────                           ────────────────
+generateUtxoKeypair()                       conecta Phantom (devnet)
+  ↓                                            ↓
+salva privKey+nk local                      lê utxoPubkey do link
+publica utxoPubkey no link  ── url ──▶      
+                                            createUtxo(amount, payerTmpUtxo, SOL)
+                                            transact(deposit) → sig1 (Solana devnet)
+                                            ⏳ ~20s
+                                            createUtxo(amount, MERCHANT_UTXO_PUB, SOL)
+                                            transact(transfer via relay
+                                              api.devnet.cloak.ag) → sig2
+                                                ↓
+explorer.solana.com/tx/sig1?cluster=devnet  ✓ pago
+explorer.solana.com/tx/sig2?cluster=devnet
+                                            
+MERCHANT (/dashboard)
+─────────────────────
+loadReceivedNotes(privKey, nk)  → lista das notas
+[opcional] withdrawNote(note, merchantWallet) → SOL público de volta
+```
+
+## Riscos & mitigações
+
+- **API low-level**: `transact`/`createUtxo` exigem mais cuidado que o `CloakSDK.privateTransfer` antigo. Mitigação: copiar literalmente os exemplos da doc (já testados pela Cloak) e abstrair na nova `sdk-service.ts`.
+- **`@cloak.dev/sdk-devnet` no npm**: o `package.json` do tarball diz "NOT PUBLISHED" mas ele *está* publicado e instalável (versão `0.1.5-devnet.0`). Confirmei via `registry.npmjs.org`. Caso quebre no futuro, alternativa é instalar via tarball URL direto.
+- **Espera de 20s entre deposit e transfer**: bloqueia a UX. Vamos mostrar progress real (a etapa de prova ZK também leva 5–30s, então o tempo total fica natural).
+- **Mock USDC ATA**: o payer precisa ter o ATA criado. A faucet Cloak cria sob demanda; para deposits, o `transact` passa o `depositorKeypair` que paga rent.
+- **Reset periódico de devnet pela Solana Foundation**: notas podem desaparecer. Aviso explícito no dashboard.
 
 ## Critério de aceite
 
-- Conectar Phantom em devnet, criar link de 0.05 SOL, pagar de outra wallet, ver assinatura real no Solscan/Explorer devnet.
-- `sdk.loadNotes()` retorna a nota persistida; dashboard mostra o pagamento.
-- Nenhuma chamada para `fakeSignature()` no runtime (só no fallback SSR).
-- README atualizado refletindo "100% devnet, ponta a ponta".
+- Conectar Phantom/Solflare em devnet → criar link de 0.01 SOL → pagar de outra wallet → ver `sig1` e `sig2` no `solscan.io ...?cluster=devnet`.
+- Dashboard do merchant lista a nota recebida via relay devnet real.
+- "Withdraw to wallet" gera nova tx pública com SOL desbloqueado.
+- Mesma coisa para mock USDC (após pegar do faucet `devnet.cloak.ag/privacy/faucet`).
+- Zero chamadas ao program mainnet `zh1eLd6r…` no runtime.
