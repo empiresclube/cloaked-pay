@@ -121,6 +121,7 @@ function PayPage() {
         token: link.token,
         memo: link.description,
         autoDeposit: true,
+        merchantUtxoPubkeyHex: link.merchantUtxoPubkeyHex,
         onProgress: (p) => {
           if (p.phase === "preparing") {
             setPhase("preparing");
@@ -135,7 +136,20 @@ function PayPage() {
         },
       });
 
-      linksStore.updateStatus(link.id, "paid", result.signature);
+      if (
+        result.depositLeafIndex !== undefined &&
+        result.depositBlindingHex !== undefined &&
+        result.depositLamports !== undefined
+      ) {
+        linksStore.markPaid(link.id, {
+          txSignature: result.signature,
+          depositLeafIndex: result.depositLeafIndex,
+          depositBlindingHex: result.depositBlindingHex,
+          depositLamports: result.depositLamports,
+        });
+      } else {
+        linksStore.updateStatus(link.id, "paid", result.signature);
+      }
       setPhase("success");
       toast.success("Payment sent privately", {
         id: t,
