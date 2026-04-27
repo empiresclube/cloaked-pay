@@ -2,8 +2,8 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Header } from "@/components/Header";
 import { useWallet } from "@/lib/wallet";
-import { linksStore } from "@/lib/storage";
-import { deriveStealthAddressFor, generateLinkId } from "@/lib/cloak";
+import { linksStore, merchantUtxoStore } from "@/lib/storage";
+import { deriveStealthAddressFor, generateLinkId, cloakSdkService } from "@/lib/cloak";
 import type { PaymentLink, TokenSymbol } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -87,6 +87,11 @@ function CreatePage() {
       // from the shielded pool hop, not from a separate stealth pubkey.
       const stealth = await deriveStealthAddressFor(publicKey);
 
+      // Generate a fresh Cloak UTXO keypair for this link. The private key
+      // stays in localStorage on this device; the public key travels in
+      // the link so the payer can deposit straight into the merchant's UTXO.
+      const utxo = await cloakSdkService.generateMerchantUtxoKeypair();
+
       const link: PaymentLink = {
         id: generateLinkId(),
         amount: amt,
@@ -96,8 +101,15 @@ function CreatePage() {
         status: "pending",
         stealthAddress: stealth.address,
         viewingKeyRef: stealth.viewingKeyRef,
+        merchantUtxoPubkeyHex: utxo.publicKeyHex,
         owner: publicKey,
       };
+      merchantUtxoStore.save({
+        linkId: link.id,
+        privateKeyHex: utxo.privateKeyHex,
+        publicKeyHex: utxo.publicKeyHex,
+        createdAt: Date.now(),
+      });
       linksStore.create(link);
       setCreated(link);
       toast.success("Payment link created", {
