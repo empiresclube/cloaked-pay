@@ -25,7 +25,7 @@
 // it during server render — where `Buffer` is undefined — which crashes the
 // whole page with a 500. All SDK-using methods are async, so the lazy import
 // adds zero observable latency in practice.
-import type { CloakKeyPair, UtxoKeypair } from "@cloak.dev/sdk";
+import type { CloakKeyPair, UtxoKeypair } from "@cloak.dev/sdk-devnet";
 
 import type {
   Address,
@@ -43,14 +43,14 @@ import type {
 } from "./types";
 import type { TokenSymbol } from "../types";
 
-type CloakSdk = typeof import("@cloak.dev/sdk");
+type CloakSdk = typeof import("@cloak.dev/sdk-devnet");
 let sdkPromise: Promise<CloakSdk> | null = null;
 
 /** Lazy-load the Cloak SDK *after* the Buffer polyfill is in place. */
 async function loadSdk(): Promise<CloakSdk> {
   if (!sdkPromise) {
     await import("./buffer-polyfill");
-    sdkPromise = import("@cloak.dev/sdk");
+    sdkPromise = import("@cloak.dev/sdk-devnet");
   }
   return sdkPromise;
 }
