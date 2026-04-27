@@ -360,23 +360,34 @@ function SuccessState({ link }: { link: PaymentLink }) {
         Payment sent
       </h2>
       <p className="mt-2 text-sm text-muted-foreground">
-        {link.amount.toFixed(2)} {link.token} confirmed privately on Solana.
+        {link.amount} {link.token} confirmed privately on Solana devnet.
       </p>
       {link.txSignature && (
-        <button
-          onClick={copySig}
-          className="group mx-auto mt-6 flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-surface/60 p-3 text-left transition-colors hover:border-border-strong hover:bg-surface"
-        >
-          <div className="min-w-0">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Receipt ID
-            </p>
-            <p className="mt-0.5 truncate font-mono text-xs text-foreground">
-              {shortAddress(link.txSignature, 10)}
-            </p>
-          </div>
-          <Copy className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-foreground" />
-        </button>
+        <div className="mt-6 space-y-2">
+          <button
+            onClick={copySig}
+            className="group mx-auto flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-surface/60 p-3 text-left transition-colors hover:border-border-strong hover:bg-surface"
+          >
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                Transaction signature
+              </p>
+              <p className="mt-0.5 truncate font-mono text-xs text-foreground">
+                {shortAddress(link.txSignature, 10)}
+              </p>
+            </div>
+            <Copy className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-foreground" />
+          </button>
+          <a
+            href={explorerUrl(link.txSignature)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-surface/60 p-3 text-xs text-muted-foreground transition-colors hover:border-border-strong hover:bg-surface hover:text-foreground"
+          >
+            View on Solana Explorer
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
       )}
       <Button asChild variant="hero" size="lg" className="mt-6 w-full">
         <Link to="/">Done</Link>
