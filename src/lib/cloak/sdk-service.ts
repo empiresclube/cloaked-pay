@@ -464,7 +464,7 @@ export const cloakUtils = {
     const mod = await loadSdk();
     return mod.formatAmount(amount, decimals);
   },
-  getExplorerUrl: async (signature: string, cluster: string = "devnet") => {
+  getExplorerUrl: async (signature: string, cluster: Network = "devnet") => {
     const mod = await loadSdk();
     return mod.getExplorerUrl(signature, cluster);
   },
