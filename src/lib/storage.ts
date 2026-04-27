@@ -84,6 +84,29 @@ export const linksStore = {
     };
     write(links);
   },
+  markPaid(
+    id: string,
+    payload: {
+      txSignature: string;
+      depositLeafIndex: number;
+      depositBlindingHex: string;
+      depositLamports: number;
+    },
+  ) {
+    const links = read();
+    const idx = links.findIndex((l) => l.id === id);
+    if (idx === -1) return;
+    links[idx] = {
+      ...links[idx],
+      status: "paid",
+      paidAt: Date.now(),
+      txSignature: payload.txSignature,
+      depositLeafIndex: payload.depositLeafIndex,
+      depositBlindingHex: payload.depositBlindingHex,
+      depositLamports: payload.depositLamports,
+    };
+    write(links);
+  },
   markWithdrawn(id: string, withdrawSignature: string) {
     const links = read();
     const idx = links.findIndex((l) => l.id === id);
