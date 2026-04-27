@@ -239,7 +239,7 @@ function PayPage() {
                   )}
                   {!connecting && phase === "idle" &&
                     (connected
-                      ? `Pay ${link.amount.toFixed(2)} ${link.token}`
+                      ? `Pay ${link.amount} ${link.token}`
                       : "Connect wallet to pay")}
                   {!connecting && phase === "preparing" && (
                     <>
@@ -248,7 +248,7 @@ function PayPage() {
                   )}
                   {!connecting && phase === "signing" && (
                     <>
-                      <Loader2 className="h-4 w-4 animate-spin" /> Signing
+                      <Loader2 className="h-4 w-4 animate-spin" /> Generating proof
                     </>
                   )}
                   {!connecting && phase === "confirming" && (
@@ -260,14 +260,15 @@ function PayPage() {
                 </Button>
 
                 <p className="mt-3 text-center text-[11px] text-muted-foreground">
-                  By continuing, you authorize a private transfer from your wallet.
+                  Real on-chain transfer on Solana devnet · ZK proof generated in
+                  your browser.
                 </p>
 
                 <div className="mt-6 space-y-2.5 border-t border-border pt-5 text-xs">
-                  <Row label="Network" value="Solana" />
-                  <Row label="Network fee" value="≈ $0.0003" hint="SOL" />
-                  <Row label="Recipient" value="Stealth address" hint="Hidden" />
-                  <Row label="Amount visibility" value="Encrypted" hint="Cloak ZK" />
+                  <Row label="Network" value="Solana devnet" />
+                  <Row label="Protocol fee" value="0.005 SOL + 0.3%" />
+                  <Row label="Privacy" value="Shielded pool" hint="Cloak ZK" />
+                  <Row label="Proof time" value="~5–30s" hint="In-browser" />
                 </div>
               </>
             )}
