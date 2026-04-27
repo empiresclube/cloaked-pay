@@ -132,10 +132,45 @@ function ensureSolToken(token: TokenSymbol) {
   }
 }
 
+/** Extract the deepest, most informative message from a thrown error. */
+function extractMessage(e: unknown): string {
+  if (!e) return "";
+  if (typeof e === "string") return e;
+  const err = e as {
+    message?: string;
+    error?: unknown;
+    cause?: unknown;
+    originalError?: unknown;
+    relayMessage?: string;
+    logs?: string[];
+    category?: string;
+    name?: string;
+  };
+  const parts: string[] = [];
+  if (err.name && err.name !== "Error") parts.push(err.name);
+  if (err.category) parts.push(`[${err.category}]`);
+  if (err.message) parts.push(err.message);
+  if (err.relayMessage) parts.push(`relay: ${err.relayMessage}`);
+  if (err.logs?.length) parts.push(`logs: ${err.logs.slice(-2).join(" | ")}`);
+
+  const inner =
+    (err.originalError && extractMessage(err.originalError)) ||
+    (err.cause && extractMessage(err.cause)) ||
+    (err.error && extractMessage(err.error));
+  if (inner && !parts.join(" ").includes(inner)) parts.push(`→ ${inner}`);
+
+  const out = parts.filter(Boolean).join(" ").trim();
+  return out || JSON.stringify(e);
+}
+
 /** Friendly mapping for the most common Cloak/Solana errors. */
 function humanizeError(e: unknown): string {
+  // Always log full error to console for debugging.
+  // eslint-disable-next-line no-console
+  console.error("[CloakPay] Operation failed:", e);
   if (!e) return "Unknown error.";
-  const msg = (e as Error).message ?? String(e);
+  const msg = extractMessage(e);
+  if (!msg) return "Unknown error (see console for details).";
   if (/insufficient/i.test(msg)) {
     return "Insufficient SOL in your wallet. Top up at https://faucet.solana.com (devnet).";
   }
@@ -146,6 +181,12 @@ function humanizeError(e: unknown): string {
   }
   if (/MIN_DEPOSIT|too small/i.test(msg)) {
     return "Minimum amount is 0.01 SOL on Cloak.";
+  }
+  if (/relay|indexer|fetch/i.test(msg)) {
+    return `Cloak relay/indexer unavailable on this network. ${msg}`;
+  }
+  if (/program|account.*not.*found|invalid.*program/i.test(msg)) {
+    return `Cloak program not found on this network. The Cloak shield-pool program may not be deployed on devnet. ${msg}`;
   }
   return msg;
 }
