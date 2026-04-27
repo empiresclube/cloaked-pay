@@ -28,7 +28,7 @@ function CreatePage() {
   const navigate = useNavigate();
 
   const [amount, setAmount] = useState("");
-  const [token, setToken] = useState<TokenSymbol>("USDC");
+  const [token, setToken] = useState<TokenSymbol>("SOL");
   const [description, setDescription] = useState("");
   const [created, setCreated] = useState<PaymentLink | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -74,9 +74,17 @@ function CreatePage() {
       });
       return;
     }
+    if (token === "SOL" && amt < 0.01) {
+      toast.error("Minimum is 0.01 SOL", {
+        description: "Cloak shield pool requires at least 0.01 SOL per note.",
+      });
+      return;
+    }
     setSubmitting(true);
 
     try {
+      // The recipient address IS the merchant's wallet — the privacy comes
+      // from the shielded pool hop, not from a separate stealth pubkey.
       const stealth = await deriveStealthAddressFor(publicKey);
 
       const link: PaymentLink = {
@@ -93,7 +101,7 @@ function CreatePage() {
       linksStore.create(link);
       setCreated(link);
       toast.success("Payment link created", {
-        description: `Ready to receive ${amt.toFixed(2)} ${token} privately.`,
+        description: `Ready to receive ${amt} ${token} privately.`,
       });
     } catch (err) {
       toast.error("Couldn't create link", {
