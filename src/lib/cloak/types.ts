@@ -130,6 +130,12 @@ export interface PrivateSendParams {
    * This is what enables the one-click pay UX on payment links.
    */
   autoDeposit?: boolean;
+  /**
+   * Hex-encoded Cloak UTXO public key (bigint) of the merchant. The payer
+   * deposits SOL into this UTXO, which only the merchant can later spend
+   * (because they hold the matching private key in localStorage).
+   */
+  merchantUtxoPubkeyHex?: string;
   onProgress?: (p: OperationProgress) => void;
 }
 
@@ -139,6 +145,14 @@ export interface WithdrawParams {
   token: TokenSymbol;
   /** Public Solana address to receive the unshielded funds. */
   to: Address;
+  /**
+   * Hex private key (bigint) of the merchant UTXO funded by a paid link.
+   * Required on devnet — `withdraw` rebuilds the UTXO from the link's
+   * deposit so the merchant can pull funds back to a public wallet.
+   */
+  merchantUtxoPrivateKeyHex?: string;
+  /** Lamports the link deposited (used to reconstruct the UTXO). */
+  depositLamports?: number;
   onProgress?: (p: OperationProgress) => void;
 }
 
