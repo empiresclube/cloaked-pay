@@ -139,7 +139,7 @@ function PayPage() {
       setPhase("success");
       toast.success("Payment sent privately", {
         id: t,
-        description: `${link.amount.toFixed(2)} ${link.token} confirmed on Solana.`,
+        description: `${link.amount} ${link.token} confirmed on Solana devnet.`,
       });
     } catch (e) {
       const msg = (e as Error).message || "Something went wrong.";
@@ -174,7 +174,7 @@ function PayPage() {
             </div>
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse-glow" />
-              Solana mainnet
+              Solana devnet
             </div>
           </div>
 
@@ -187,7 +187,7 @@ function PayPage() {
 
             <div className="mt-7 flex items-baseline justify-center gap-2.5">
               <span className="font-display text-[68px] leading-none font-semibold tracking-[-0.04em] tabular-nums text-foreground">
-                {link.amount.toFixed(2)}
+                {link.amount}
               </span>
               <span className="text-xl font-medium text-muted-foreground">
                 {link.token}
