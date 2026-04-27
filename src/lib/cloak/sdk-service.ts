@@ -83,6 +83,14 @@ function resolveRpcUrl(): string {
 function resolveRelayUrl(): string {
   const custom = import.meta.env.VITE_CLOAK_RELAY_URL as string | undefined;
   if (custom && custom.length > 0) return custom;
+
+  // Cloak's devnet relay does not currently return Access-Control-Allow-Origin
+  // for Lovable preview origins on every endpoint the SDK uses. Route browser
+  // traffic through our same-origin public proxy; keep SSR/server calls direct.
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}/api/public/cloak`;
+  }
+
   return "https://api.devnet.cloak.ag";
 }
 
