@@ -51,10 +51,14 @@ export function CloakProvider({ children }: { children: ReactNode }) {
         signAllTransactions: adapter.signAllTransactions?.bind(adapter) as never,
         sendTransaction: adapter.sendTransaction.bind(adapter) as never,
       });
+      cloakSdkService.setSignMessage(
+        adapter.signMessage ? adapter.signMessage.bind(adapter) : null,
+      );
     } else {
       cloakSdkService.setWallet(null);
+      cloakSdkService.setSignMessage(null);
     }
-  }, [adapter.connected, adapter.publicKey, adapter.signTransaction, adapter.sendTransaction, adapter.signAllTransactions, adapter]);
+  }, [adapter.connected, adapter.publicKey, adapter.signTransaction, adapter.sendTransaction, adapter.signAllTransactions, adapter.signMessage, adapter]);
 
   return <CloakContext.Provider value={{ service }}>{children}</CloakContext.Provider>;
 }
