@@ -32,7 +32,7 @@ export {
   deriveStealthAddressFor,
 } from "./provider";
 export { CloakProvider } from "./provider";
-export { cloakUtils, explorerUrl } from "./sdk-service";
+export { cloakUtils, explorerUrl, cloakSdkService } from "./sdk-service";
 
 /** Generates a short, shareable payment link ID. */
 export function generateLinkId(): string {
