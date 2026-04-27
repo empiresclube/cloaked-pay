@@ -46,6 +46,7 @@ function Dashboard() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
   const [shareLinkId, setShareLinkId] = useState<string | null>(null);
+  const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!publicKey) return;
@@ -107,6 +108,63 @@ function Dashboard() {
     toast("Link deleted", {
       description: `${link.amount} ${link.token} request removed.`,
     });
+  };
+
+  const withdrawLink = async (link: PaymentLink) => {
+    if (!publicKey) return;
+    const secret = merchantUtxoStore.get(link.id);
+    if (!secret) {
+      toast.error("Missing merchant key", {
+        description: "This link was created on another device — withdraw isn't possible here.",
+      });
+      return;
+    }
+    if (
+      link.depositLeafIndex === undefined ||
+      link.depositBlindingHex === undefined ||
+      link.depositLamports === undefined
+    ) {
+      toast.error("Deposit not recorded", {
+        description: "Wait for the payer to complete the transfer first.",
+      });
+      return;
+    }
+    setWithdrawingId(link.id);
+    const t = toast.loading("Preparing withdrawal…");
+    try {
+      const result = await getCloakService().withdraw({
+        owner: publicKey,
+        amount: link.amount,
+        token: link.token,
+        to: publicKey,
+        merchantUtxoPrivateKeyHex: secret.privateKeyHex,
+        depositLamports: link.depositLamports,
+        depositLeafIndex: link.depositLeafIndex,
+        depositBlindingHex: link.depositBlindingHex,
+        onProgress: (p) => toast.loading(p.message, { id: t }),
+      } as never);
+      linksStore.markWithdrawn(link.id, result.signature);
+      toast.success("Withdrawn to your wallet", {
+        id: t,
+        description: (
+          <a
+            href={explorerUrl(result.signature)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline"
+          >
+            View on Solana Explorer
+          </a>
+        ) as never,
+      });
+    } catch (e) {
+      toast.error("Withdraw failed", {
+        id: t,
+        description: (e as Error).message,
+      });
+    } finally {
+      setWithdrawingId(null);
+    }
   };
 
   return (
@@ -236,6 +294,29 @@ function Dashboard() {
                     <StatusBadge status={link.status} />
                   </div>
                   <div className="col-span-3 flex items-center justify-end gap-0.5">
+                    {link.status === "paid" && !link.withdrawSignature && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => withdrawLink(link)}
+                        disabled={withdrawingId === link.id}
+                        aria-label="Withdraw to wallet"
+                        title="Withdraw to my wallet"
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    )}
+                    {link.withdrawSignature && (
+                      <a
+                        href={explorerUrl(link.withdrawSignature)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
+                        title="View withdrawal on explorer"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"
