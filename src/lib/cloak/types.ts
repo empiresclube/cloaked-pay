@@ -106,6 +106,12 @@ export interface OperationResult {
   confirmedAt: number;
   /** Updated balance after this op. */
   balanceAfter?: ShieldedBalance;
+  /** Devnet only: leaf index of the output UTXO inserted into the Merkle tree. */
+  depositLeafIndex?: number;
+  /** Devnet only: blinding (hex bigint) used when building the output UTXO. */
+  depositBlindingHex?: string;
+  /** Devnet only: lamports deposited (post-fee). */
+  depositLamports?: number;
 }
 
 /* ─────────────────────────────────────────────── Operation parameters ── */
