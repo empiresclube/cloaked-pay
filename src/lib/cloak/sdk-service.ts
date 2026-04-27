@@ -1,37 +1,34 @@
 /**
- * Real Cloak SDK service — devnet.
+ * Real Cloak SDK service — devnet (UTXO API).
  *
- * Implements `CloakService` using the high-level `CloakSDK` class from
- * `@cloak.dev/sdk-devnet` (devnet program ID `Zc1k…` + relay `api.devnet.cloak.ag`).
- * This is the runtime path used after a wallet connects.
+ * Implements `CloakService` using the **low-level UTXO API** of
+ * `@cloak.dev/sdk-devnet` (`transact` + `createUtxo` + `fullWithdraw`).
  *
- * Privacy model (per Cloak docs):
- *   - A *note* is a private commitment created from a wallet's spend key.
- *   - `privateTransfer(connection, note, recipients)` deposits the note,
- *     generates a Groth16 ZK proof in the browser, and withdraws to the
- *     listed recipients via the Cloak relay — all in one call.
- *   - The on-chain link between sender and recipient is hidden by the
- *     shielded pool; the recipient sees regular SOL land in their wallet.
+ * Why not the high-level `CloakSDK` class?
+ *   The legacy `CloakSDK.deposit()` / `.privateTransfer()` methods build a
+ *   4-account deposit instruction that the deployed devnet program
+ *   (`Zc1k…27h`) rejects with "Missing required accounts" (0x1063).
+ *   The devnet program expects the new UTXO transaction layout, which is
+ *   what `transact()` produces. See https://docs.cloak.ag/development/devnet.
  *
- * One note per payment link (1:1 mapping):
- *   When a payer pays a CloakPay link, we call `sdk.privateTransfer(...)`
- *   with the link's `amount` and the merchant's wallet as the single
- *   recipient. No "shielded balance" accounting on the payer side — funds
- *   flow public → shielded → public in a single user action, mirroring the
- *   Stripe-style "Pay" UX.
+ * One UTXO per payment link:
+ *   When a merchant creates a link, the UI generates a UTXO keypair and
+ *   keeps the private key in localStorage. The link carries only the
+ *   public key. When a payer pays, we deposit straight into that UTXO via
+ *   `transact({ outputUtxos: [merchantUtxo], externalAmount: amount })` —
+ *   no intermediate "shielded balance" on the payer side. Later the
+ *   merchant withdraws to a regular wallet via `fullWithdraw`.
  *
- * SOL only on devnet:
- *   The shield pool is denominated in SOL. USDC private paths require swap
- *   routes that don't exist on devnet, so we surface a clear error.
+ * SOL only on devnet.
  */
 
 import type {
-  CloakSDK as CloakSDKType,
-  CloakNote,
   Network,
+  Utxo,
+  UtxoKeypair,
   WalletAdapter,
 } from "@cloak.dev/sdk-devnet";
-import { Connection, PublicKey } from "@solana/web3.js";
+import { Connection, PublicKey, type Transaction, type VersionedTransaction } from "@solana/web3.js";
 
 import "./buffer-polyfill";
 import type {
@@ -83,28 +80,30 @@ function resolveRpcUrl(): string {
   return "https://api.devnet.solana.com";
 }
 
-/* ─────────────────────────────────── Phase mapping (SDK → app phases) ── */
-
-function mapDepositPhase(status: string): OperationProgress["phase"] {
-  if (status.includes("note")) return "preparing";
-  if (status.includes("simulat") || status.includes("creating")) return "preparing";
-  if (status.includes("send")) return "submitting";
-  if (status.includes("confirm")) return "confirming";
-  if (status.includes("indexer") || status.includes("proof")) return "confirming";
-  if (status === "complete") return "success";
-  return "preparing";
+function resolveRelayUrl(): string {
+  const custom = import.meta.env.VITE_CLOAK_RELAY_URL as string | undefined;
+  if (custom && custom.length > 0) return custom;
+  return "https://api.devnet.cloak.ag";
 }
 
-function mapTransferPhase(status: string): OperationProgress["phase"] {
-  const s = status.toLowerCase();
-  if (s.includes("deposit")) return "preparing";
-  if (s.includes("proof") || s.includes("proving") || s.includes("generating"))
-    return "proving";
-  if (s.includes("submit") || s.includes("relay") || s.includes("send"))
-    return "submitting";
-  if (s.includes("confirm") || s.includes("waiting")) return "confirming";
-  if (s.includes("complete") || s.includes("success")) return "success";
-  return "preparing";
+/* ──────────────────────────────────────────────────── Helpers ── */
+
+const SOL_DECIMALS = 9;
+
+function solToLamports(amount: number): bigint {
+  return BigInt(Math.round(amount * 1_000_000_000));
+}
+
+function lamportsToSol(lamports: bigint | number): number {
+  return Number(lamports) / 1_000_000_000;
+}
+
+function ensureSolToken(token: TokenSymbol) {
+  if (token !== "SOL") {
+    throw new Error(
+      `${token} private transfers are not supported on devnet. Switch this link to SOL.`,
+    );
+  }
 }
 
 function progressEmitter(onProgress?: (p: OperationProgress) => void) {
@@ -113,24 +112,16 @@ function progressEmitter(onProgress?: (p: OperationProgress) => void) {
   };
 }
 
-/* ──────────────────────────────────────────────────── Helpers ── */
-
-const SOL_DECIMALS = 9;
-
-function solToLamports(amount: number): number {
-  return Math.round(amount * 1_000_000_000);
-}
-
-function lamportsToSol(lamports: number): number {
-  return lamports / 1_000_000_000;
-}
-
-function ensureSolToken(token: TokenSymbol) {
-  if (token !== "SOL") {
-    throw new Error(
-      `${token} private transfers require mainnet swap routes. Switch this link to SOL to test on devnet.`,
-    );
-  }
+/** Map relay/sdk progress strings to our internal phases. */
+function mapPhase(status: string): OperationProgress["phase"] {
+  const s = status.toLowerCase();
+  if (s.includes("proof") || s.includes("proving") || s.includes("generating"))
+    return "proving";
+  if (s.includes("submit") || s.includes("relay") || s.includes("send"))
+    return "submitting";
+  if (s.includes("confirm") || s.includes("waiting")) return "confirming";
+  if (s.includes("complete") || s.includes("success")) return "success";
+  return "preparing";
 }
 
 /** Extract the deepest, most informative message from a thrown error. */
@@ -153,25 +144,28 @@ function extractMessage(e: unknown): string {
   if (err.message) parts.push(err.message);
   if (err.relayMessage) parts.push(`relay: ${err.relayMessage}`);
   if (err.logs?.length) parts.push(`logs: ${err.logs.slice(-2).join(" | ")}`);
-
   const inner =
     (err.originalError ? extractMessage(err.originalError) : "") ||
     (err.cause ? extractMessage(err.cause) : "") ||
     (err.error ? extractMessage(err.error) : "");
   if (inner && !parts.join(" ").includes(inner)) parts.push(`→ ${inner}`);
-
   const out = parts.filter(Boolean).join(" ").trim();
   return out || JSON.stringify(e);
 }
 
 /** Friendly mapping for the most common Cloak/Solana errors. */
 function humanizeError(e: unknown): string {
-  // Always log full error to console for debugging.
   // eslint-disable-next-line no-console
   console.error("[CloakPay] Operation failed:", e);
   if (!e) return "Unknown error.";
   const msg = extractMessage(e);
   if (!msg) return "Unknown error (see console for details).";
+  if (/0x1063|missing required accounts/i.test(msg)) {
+    return "Cloak devnet SDK out of sync with the deployed program. Update @cloak.dev/sdk-devnet and retry.";
+  }
+  if (/0x1001|RootNotFound|root not found/i.test(msg)) {
+    return "Merkle root moved while we were preparing the transaction. Try again.";
+  }
   if (/insufficient/i.test(msg)) {
     return "Insufficient SOL in your wallet. Top up at https://faucet.solana.com (devnet).";
   }
@@ -186,27 +180,41 @@ function humanizeError(e: unknown): string {
   if (/relay|indexer|fetch/i.test(msg)) {
     return `Cloak relay/indexer unavailable on this network. ${msg}`;
   }
-  if (/program|account.*not.*found|invalid.*program/i.test(msg)) {
-    return `Cloak program not found on this network. The Cloak shield-pool program may not be deployed on devnet. ${msg}`;
-  }
   return msg;
+}
+
+/* ─────────────────────────────── Deterministic blinding per link ── */
+
+/** Field modulus used by Cloak's UTXO commitments (BN254 scalar field). */
+const FIELD_MODULUS =
+  21888242871839275222246405745257275088548364400416034343698204186575808495617n;
+
+/** Derive a deterministic blinding (bigint) from any string seed. */
+async function deterministicBlinding(seed: string): Promise<bigint> {
+  const enc = new TextEncoder().encode(`cloakpay:blinding:${seed}`);
+  const hash = await crypto.subtle.digest("SHA-256", enc);
+  const bytes = new Uint8Array(hash);
+  let value = 0n;
+  for (let i = 0; i < 32; i++) value = (value << 8n) | BigInt(bytes[i]);
+  return value % FIELD_MODULUS;
 }
 
 /* ─────────────────────────────────────────── Service implementation ── */
 
 class CloakSdkService implements CloakService {
-  private sdk: CloakSDKType | null = null;
   private wallet: WalletAdapter | null = null;
+  private signMessage:
+    | ((message: Uint8Array) => Promise<Uint8Array>)
+    | null = null;
   private connection: Connection | null = null;
-  private currentOwner: string | null = null;
 
   /** Called by the React provider every time the wallet adapter changes. */
   setWallet(wallet: WalletAdapter | null) {
-    if (this.wallet === wallet) return;
     this.wallet = wallet;
-    // Force SDK rebuild on next call — wallet identity changed.
-    this.sdk = null;
-    this.currentOwner = wallet?.publicKey?.toBase58() ?? null;
+  }
+
+  setSignMessage(fn: ((message: Uint8Array) => Promise<Uint8Array>) | null) {
+    this.signMessage = fn;
   }
 
   /** Lazy-initialize the connection (RPC). */
@@ -217,32 +225,21 @@ class CloakSdkService implements CloakService {
     return this.connection;
   }
 
-  private async getSdk(): Promise<CloakSDKType> {
+  private requireWallet(): WalletAdapter & { publicKey: PublicKey } {
     if (!this.wallet || !this.wallet.publicKey) {
       throw new Error("Connect your wallet first.");
     }
-    if (this.sdk) return this.sdk;
-
-    const mod = await loadSdk();
-    this.sdk = new mod.CloakSDK({
-      wallet: this.wallet,
-      network: resolveNetwork(),
-      storage: new mod.LocalStorageAdapter(
-        `cloak.notes.${this.currentOwner}`,
-        `cloak.keys.${this.currentOwner}`,
-      ),
-    });
-    return this.sdk;
+    return this.wallet as WalletAdapter & { publicKey: PublicKey };
   }
 
   /* ── Stealth addresses ──────────────────────────────────────────── */
 
   /**
-   * For real Cloak transfers the "stealth" property comes from the
-   * commitment generated per note, not from a separate address. So we
-   * return the recipient's actual wallet address as the on-chain
-   * destination (where the withdraw lands), and a viewing-key reference
-   * derived from the recipient's pubkey for the dashboard UI.
+   * On devnet the on-chain destination of a private payment is the merchant's
+   * **own Solana wallet** (used as the depositor for the shielded pool entry).
+   * The actual privacy primitive — the recipient UTXO inside the pool — is
+   * created at link-time in the UI (`generateUtxoKeypair`) and embedded into
+   * the link as a hex pubkey.
    */
   async deriveStealthAddress(recipient: Address): Promise<StealthAddress> {
     const mod = await loadSdk();
@@ -256,57 +253,23 @@ class CloakSdkService implements CloakService {
     };
   }
 
-  /* ── Shielded balance & notes (computed from real notes) ────────── */
+  /* ── Shielded balance & notes (no-op on devnet UTXO model) ──────── */
 
   async getShieldedBalance(
-    owner: Address,
+    _owner: Address,
     token: TokenSymbol,
   ): Promise<ShieldedBalance> {
-    if (token !== "SOL" || !this.wallet?.publicKey) {
-      return { token, available: 0, pending: 0, noteCount: 0 };
-    }
-    void owner;
-    try {
-      const sdk = await this.getSdk();
-      const mod = await loadSdk();
-      const notes = (await sdk.loadNotes()).filter(
-        (n) => n.network === resolveNetwork() && mod.isWithdrawable(n),
-      );
-      const lamports = notes.reduce((sum, n) => sum + n.amount, 0);
-      return {
-        token: "SOL",
-        available: lamportsToSol(lamports),
-        pending: 0,
-        noteCount: notes.length,
-      };
-    } catch {
-      return { token, available: 0, pending: 0, noteCount: 0 };
-    }
+    return { token, available: 0, pending: 0, noteCount: 0 };
   }
 
   async listNotes(
-    owner: Address,
-    viewingKey: ViewingKey,
+    _owner: Address,
+    _viewingKey: ViewingKey,
   ): Promise<ShieldedNote[]> {
-    void owner;
-    void viewingKey;
-    if (!this.wallet?.publicKey) return [];
-    const sdk = await this.getSdk();
-    const notes = await sdk.loadNotes();
-    return notes
-      .filter((n) => n.network === resolveNetwork())
-      .map<ShieldedNote>((n) => ({
-        id: n.commitment,
-        token: "SOL",
-        amount: lamportsToSol(n.amount),
-        confirmedAt: n.timestamp,
-        spent: false,
-        memo: undefined,
-        stealthAddress: n.commitment,
-      }));
+    return [];
   }
 
-  /* ── Deposit ────────────────────────────────────────────────────── */
+  /* ── Deposit (kept for API completeness — not used by the link flow) ── */
 
   async deposit({
     payer,
@@ -316,93 +279,212 @@ class CloakSdkService implements CloakService {
   }: DepositParams): Promise<OperationResult> {
     ensureSolToken(token);
     void payer;
+    onProgress?.({
+      phase: "error",
+      message: "Direct deposits aren't used by CloakPay — use a payment link.",
+      progress: 1,
+    });
+    throw new Error(
+      `Use a payment link to deposit ${amount} ${token} privately.`,
+    );
+  }
+
+  /* ── Private send (one-shot deposit into the merchant's UTXO) ───── */
+
+  async privateSend(params: PrivateSendParams): Promise<OperationResult> {
+    const { to, amount, token, merchantUtxoPubkeyHex, onProgress } = params;
+    ensureSolToken(token);
+
+    const wallet = this.requireWallet();
+    if (!merchantUtxoPubkeyHex) {
+      throw new Error(
+        "Payment link is missing the merchant UTXO pubkey. Ask the merchant to recreate the link.",
+      );
+    }
+
     const emit = progressEmitter(onProgress);
-    const sdk = await this.getSdk();
+    const mod = await loadSdk();
     const connection = this.getConnection();
 
+    // Validate recipient as Solana address (used as deposit-source identity).
+    try {
+      // eslint-disable-next-line no-new
+      new PublicKey(to.address);
+    } catch {
+      throw new Error(`Recipient ${to.address} is not a valid Solana address.`);
+    }
+
     const lamports = solToLamports(amount);
+    if (lamports < BigInt(mod.MIN_DEPOSIT_LAMPORTS)) {
+      throw new Error(
+        `Minimum amount is ${lamportsToSol(mod.MIN_DEPOSIT_LAMPORTS)} SOL on Cloak (devnet).`,
+      );
+    }
+
+    emit("preparing", "Preparing private deposit…", 0.1);
 
     try {
-      const result = await sdk.deposit(connection, lamports, {
-        onProgress: (status) => {
-          emit(mapDepositPhase(String(status)), `Depositing… (${status})`, 0.5);
-        },
-      });
-      emit("success", "Deposited.", 1);
+      // 1. Reconstruct the merchant's UTXO public key from the link.
+      const merchantPubKey = mod.hexToBigint(merchantUtxoPubkeyHex);
+      // We don't know the merchant's UTXO private key (and shouldn't) — but
+      // `transact` only needs the *public* limb to build the output commitment.
+      // We pass privateKey = 0n; this UTXO can't be spent until the merchant
+      // reconstructs the keypair on their side using the saved private key.
+      const merchantKeypair: UtxoKeypair = {
+        privateKey: 0n,
+        publicKey: merchantPubKey,
+      };
 
-      const balance = await this.getShieldedBalance(payer, "SOL");
+      // Deterministic blinding so the merchant can rebuild the same UTXO.
+      const linkSeed = `${merchantUtxoPubkeyHex}:${lamports.toString()}`;
+      const blinding = await deterministicBlinding(linkSeed);
+
+      // 2. Build the deposit output UTXO (manual so we can pin the blinding).
+      const outputUtxo: Utxo = {
+        amount: lamports,
+        keypair: merchantKeypair,
+        blinding,
+        mintAddress: mod.NATIVE_SOL_MINT,
+      };
+      outputUtxo.commitment = await mod.computeUtxoCommitment(outputUtxo);
+
+      // 3. Padding zero UTXO required by the circuit.
+      const zeroUtxo = await mod.createZeroUtxo(mod.NATIVE_SOL_MINT);
+
+      emit("preparing", "Awaiting wallet signature…", 0.2);
+
+      // 4. Submit through the relay — `transact` builds the proof and ix.
+      const signTx = wallet.signTransaction
+        ? <T extends Transaction | VersionedTransaction>(tx: T) =>
+            wallet.signTransaction!(tx as never) as Promise<T>
+        : undefined;
+
+      const result = await mod.transact(
+        {
+          inputUtxos: [zeroUtxo],
+          outputUtxos: [outputUtxo],
+          externalAmount: lamports,
+          depositor: wallet.publicKey,
+        },
+        {
+          connection,
+          programId: mod.CLOAK_PROGRAM_ID,
+          relayUrl: resolveRelayUrl(),
+          signTransaction: signTx,
+          signMessage: this.signMessage ?? undefined,
+          depositorPublicKey: wallet.publicKey,
+          walletPublicKey: wallet.publicKey,
+          onProgress: (status: string) => {
+            emit(mapPhase(String(status)), `Cloak: ${status}`, 0.5);
+          },
+          onProofProgress: (pct: number) => {
+            emit("proving", `Generating zero-knowledge proof… ${pct}%`, 0.3 + pct / 200);
+          },
+        },
+      );
+
+      emit("success", "Payment confirmed on Solana devnet.", 1);
+
+      const leafIndex = result.commitmentIndices?.[0] ?? 0;
+
       return {
         signature: result.signature,
         confirmedAt: Date.now(),
-        balanceAfter: balance,
+        depositLeafIndex: leafIndex,
+        depositBlindingHex: mod.bigintToHex(blinding),
+        depositLamports: Number(lamports),
+        balanceAfter: { token: "SOL", available: 0, pending: 0, noteCount: 0 },
       };
     } catch (e) {
       throw new Error(humanizeError(e));
     }
   }
 
-  /* ── Private send (one-shot deposit + transfer to recipient) ────── */
+  /* ── Withdraw (shielded merchant UTXO → public wallet) ──────────── */
 
-  async privateSend(params: PrivateSendParams): Promise<OperationResult> {
-    const { payer, to, amount, token, onProgress } = params;
+  async withdraw({
+    owner,
+    amount,
+    token,
+    to,
+    merchantUtxoPrivateKeyHex,
+    depositLamports,
+    onProgress,
+  }: WithdrawParams & {
+    merchantUtxoPrivateKeyHex?: string;
+    depositLamports?: number;
+    depositLeafIndex?: number;
+    depositBlindingHex?: string;
+  }): Promise<OperationResult> {
     ensureSolToken(token);
+    void owner;
+    void amount;
 
-    if (!this.wallet?.publicKey) {
-      throw new Error("Connect your wallet first.");
-    }
-    void payer;
-
+    const wallet = this.requireWallet();
     const emit = progressEmitter(onProgress);
-    const sdk = await this.getSdk();
     const mod = await loadSdk();
     const connection = this.getConnection();
 
-    const recipientPk = (() => {
-      try {
-        return new PublicKey(to.address);
-      } catch {
-        throw new Error(`Recipient ${to.address} is not a valid Solana address.`);
-      }
-    })();
-
-    const lamports = solToLamports(amount);
-    if (lamports < mod.MIN_DEPOSIT_LAMPORTS) {
+    if (!merchantUtxoPrivateKeyHex) {
       throw new Error(
-        `Minimum amount is ${lamportsToSol(mod.MIN_DEPOSIT_LAMPORTS)} SOL on Cloak (devnet).`,
+        "Missing merchant UTXO private key for this link. It only exists on the device that created the link.",
       );
     }
-    // Total fee = fixed (0.005 SOL) + variable (0.3%). User must hold lamports + fee.
-    const totalFee = mod.calculateFee(lamports);
-    const totalNeeded = lamports + totalFee;
 
-    emit("preparing", "Preparing private transfer…", 0.1);
+    const extra = arguments[0] as {
+      depositLeafIndex?: number;
+      depositBlindingHex?: string;
+    };
+    const leafIndex = extra.depositLeafIndex;
+    const blindingHex = extra.depositBlindingHex;
+    if (leafIndex === undefined || blindingHex === undefined || depositLamports === undefined) {
+      throw new Error(
+        "This link doesn't have a recorded deposit yet — wait for the payer to complete the transfer.",
+      );
+    }
 
     try {
-      // 1) Generate a fresh note with the exact amount.
-      const note: CloakNote = await sdk.generateNote(lamports);
+      // 1. Rebuild the merchant UTXO from the link metadata.
+      const privateKey = mod.hexToBigint(merchantUtxoPrivateKeyHex);
+      const publicKey = await mod.derivePublicKey(privateKey);
+      const blinding = mod.hexToBigint(blindingHex);
+      const lamports = BigInt(depositLamports);
 
-      emit("preparing", "Note created. Awaiting wallet signature…", 0.2);
+      const inputUtxo: Utxo = {
+        amount: lamports,
+        keypair: { privateKey, publicKey },
+        blinding,
+        mintAddress: mod.NATIVE_SOL_MINT,
+        index: leafIndex,
+      };
+      inputUtxo.commitment = await mod.computeUtxoCommitment(inputUtxo);
 
-      // 2) privateTransfer: deposits, builds proof, and withdraws to recipient.
-      const result = await sdk.privateTransfer(
+      const recipientPk = new PublicKey(to);
+
+      emit("preparing", "Preparing withdrawal…", 0.2);
+
+      const signTx = wallet.signTransaction
+        ? <T extends Transaction | VersionedTransaction>(tx: T) =>
+            wallet.signTransaction!(tx as never) as Promise<T>
+        : undefined;
+
+      const result = await mod.fullWithdraw([inputUtxo], recipientPk, {
         connection,
-        note,
-        [{ recipient: recipientPk, amount: lamports - totalFee }],
-        {
-          onProgress: (status) => {
-            emit(
-              mapTransferPhase(String(status)),
-              `Transferring… (${status})`,
-              0.5,
-            );
-          },
-          onProofProgress: (pct) => {
-            emit("proving", `Generating zero-knowledge proof… ${pct}%`, 0.3 + pct / 200);
-          },
+        programId: mod.CLOAK_PROGRAM_ID,
+        relayUrl: resolveRelayUrl(),
+        signTransaction: signTx,
+        signMessage: this.signMessage ?? undefined,
+        depositorPublicKey: wallet.publicKey,
+        walletPublicKey: wallet.publicKey,
+        onProgress: (status: string) => {
+          emit(mapPhase(String(status)), `Cloak: ${status}`, 0.5);
         },
-      );
+        onProofProgress: (pct: number) => {
+          emit("proving", `Generating withdraw proof… ${pct}%`, 0.3 + pct / 200);
+        },
+      });
 
-      emit("success", "Payment confirmed on Solana.", 1);
+      emit("success", "Withdrawal confirmed.", 1);
 
       return {
         signature: result.signature,
@@ -410,67 +492,11 @@ class CloakSdkService implements CloakService {
         balanceAfter: { token: "SOL", available: 0, pending: 0, noteCount: 0 },
       };
     } catch (e) {
-      // Surface min-balance check after-the-fact for clearer UX.
-      const msg = (e as Error).message ?? String(e);
-      if (/insufficient/i.test(msg)) {
-        throw new Error(
-          `Need ≈${lamportsToSol(totalNeeded).toFixed(4)} SOL in your wallet ` +
-            `(${amount} SOL + ${lamportsToSol(totalFee).toFixed(4)} SOL fee). ` +
-            `Top up at https://faucet.solana.com on devnet.`,
-        );
-      }
       throw new Error(humanizeError(e));
     }
   }
 
-  /* ── Withdraw (shielded → public) ───────────────────────────────── */
-
-  async withdraw({
-    owner,
-    amount,
-    token,
-    to,
-    onProgress,
-  }: WithdrawParams): Promise<OperationResult> {
-    ensureSolToken(token);
-    void owner;
-    const emit = progressEmitter(onProgress);
-    const sdk = await this.getSdk();
-    const mod = await loadSdk();
-    const connection = this.getConnection();
-
-    const lamports = solToLamports(amount);
-    const notes = (await sdk.loadNotes()).filter((n) => mod.isWithdrawable(n));
-    const note = notes.find((n) => n.amount >= lamports);
-    if (!note) {
-      throw new Error("No shielded note big enough to cover this withdrawal.");
-    }
-
-    const recipientPk = new PublicKey(to);
-
-    emit("preparing", "Preparing withdrawal…", 0.2);
-
-    try {
-      const result = await sdk.withdraw(connection, note, recipientPk, {
-        withdrawAll: true,
-        onProgress: (status) => {
-          emit(mapTransferPhase(String(status)), `Withdrawing… (${status})`, 0.5);
-        },
-      });
-      emit("success", "Withdrawal confirmed.", 1);
-
-      const balance = await this.getShieldedBalance(owner, "SOL");
-      return {
-        signature: result.signature,
-        confirmedAt: Date.now(),
-        balanceAfter: balance,
-      };
-    } catch (e) {
-      throw new Error(humanizeError(e));
-    }
-  }
-
-  /* ── Viewing keys ───────────────────────────────────────────────── */
+  /* ── Viewing keys (placeholder — UI-only) ──────────────────────── */
 
   async generateViewingKey(
     owner: Address,
@@ -494,6 +520,21 @@ class CloakSdkService implements CloakService {
 
   async revokeViewingKey(_ref: ViewingKeyRef): Promise<void> {
     return;
+  }
+
+  /* ── Helpers exposed to the UI for link creation ──────────────── */
+
+  /** Generate a fresh UTXO keypair for a new payment link. */
+  async generateMerchantUtxoKeypair(): Promise<{
+    privateKeyHex: string;
+    publicKeyHex: string;
+  }> {
+    const mod = await loadSdk();
+    const kp = await mod.generateUtxoKeypair();
+    return {
+      privateKeyHex: mod.bigintToHex(kp.privateKey),
+      publicKeyHex: mod.bigintToHex(kp.publicKey),
+    };
   }
 }
 

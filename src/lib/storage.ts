@@ -6,6 +6,39 @@
 import type { PaymentLink, PaymentStatus } from "./types";
 
 const KEY = "cloak_payment_links_v1";
+const MERCHANT_UTXO_KEY = (linkId: string) => `cloak.merchant.utxo.${linkId}`;
+
+/** UTXO private key (bigint hex) the merchant holds for a given link. */
+export interface MerchantUtxoSecret {
+  linkId: string;
+  privateKeyHex: string;
+  publicKeyHex: string;
+  createdAt: number;
+}
+
+export const merchantUtxoStore = {
+  save(secret: MerchantUtxoSecret) {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      MERCHANT_UTXO_KEY(secret.linkId),
+      JSON.stringify(secret),
+    );
+  },
+  get(linkId: string): MerchantUtxoSecret | null {
+    if (typeof window === "undefined") return null;
+    const raw = window.localStorage.getItem(MERCHANT_UTXO_KEY(linkId));
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as MerchantUtxoSecret;
+    } catch {
+      return null;
+    }
+  },
+  remove(linkId: string) {
+    if (typeof window === "undefined") return;
+    window.localStorage.removeItem(MERCHANT_UTXO_KEY(linkId));
+  },
+};
 
 function read(): PaymentLink[] {
   if (typeof window === "undefined") return [];
@@ -51,7 +84,42 @@ export const linksStore = {
     };
     write(links);
   },
+  markPaid(
+    id: string,
+    payload: {
+      txSignature: string;
+      depositLeafIndex: number;
+      depositBlindingHex: string;
+      depositLamports: number;
+    },
+  ) {
+    const links = read();
+    const idx = links.findIndex((l) => l.id === id);
+    if (idx === -1) return;
+    links[idx] = {
+      ...links[idx],
+      status: "paid",
+      paidAt: Date.now(),
+      txSignature: payload.txSignature,
+      depositLeafIndex: payload.depositLeafIndex,
+      depositBlindingHex: payload.depositBlindingHex,
+      depositLamports: payload.depositLamports,
+    };
+    write(links);
+  },
+  markWithdrawn(id: string, withdrawSignature: string) {
+    const links = read();
+    const idx = links.findIndex((l) => l.id === id);
+    if (idx === -1) return;
+    links[idx] = {
+      ...links[idx],
+      withdrawSignature,
+      withdrawnAt: Date.now(),
+    };
+    write(links);
+  },
   remove(id: string) {
+    merchantUtxoStore.remove(id);
     write(read().filter((l) => l.id !== id));
   },
 };
