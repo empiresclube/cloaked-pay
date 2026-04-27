@@ -24,6 +24,8 @@ import {
   Trash2,
   ArrowUpRight,
   Share2,
+  Download,
+  ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
 
