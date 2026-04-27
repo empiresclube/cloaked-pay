@@ -13,6 +13,7 @@ import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as CreateRouteImport } from './routes/create'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PayIdRouteImport } from './routes/pay.$id'
+import { Route as ApiPublicCloakSplatRouteImport } from './routes/api.public.cloak.$'
 
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
@@ -34,18 +35,25 @@ const PayIdRoute = PayIdRouteImport.update({
   path: '/pay/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicCloakSplatRoute = ApiPublicCloakSplatRouteImport.update({
+  id: '/api/public/cloak/$',
+  path: '/api/public/cloak/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/create': typeof CreateRoute
   '/dashboard': typeof DashboardRoute
   '/pay/$id': typeof PayIdRoute
+  '/api/public/cloak/$': typeof ApiPublicCloakSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/create': typeof CreateRoute
   '/dashboard': typeof DashboardRoute
   '/pay/$id': typeof PayIdRoute
+  '/api/public/cloak/$': typeof ApiPublicCloakSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -53,13 +61,20 @@ export interface FileRoutesById {
   '/create': typeof CreateRoute
   '/dashboard': typeof DashboardRoute
   '/pay/$id': typeof PayIdRoute
+  '/api/public/cloak/$': typeof ApiPublicCloakSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/create' | '/dashboard' | '/pay/$id'
+  fullPaths: '/' | '/create' | '/dashboard' | '/pay/$id' | '/api/public/cloak/$'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/create' | '/dashboard' | '/pay/$id'
-  id: '__root__' | '/' | '/create' | '/dashboard' | '/pay/$id'
+  to: '/' | '/create' | '/dashboard' | '/pay/$id' | '/api/public/cloak/$'
+  id:
+    | '__root__'
+    | '/'
+    | '/create'
+    | '/dashboard'
+    | '/pay/$id'
+    | '/api/public/cloak/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -67,6 +82,7 @@ export interface RootRouteChildren {
   CreateRoute: typeof CreateRoute
   DashboardRoute: typeof DashboardRoute
   PayIdRoute: typeof PayIdRoute
+  ApiPublicCloakSplatRoute: typeof ApiPublicCloakSplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -99,6 +115,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PayIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/cloak/$': {
+      id: '/api/public/cloak/$'
+      path: '/api/public/cloak/$'
+      fullPath: '/api/public/cloak/$'
+      preLoaderRoute: typeof ApiPublicCloakSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -107,6 +130,7 @@ const rootRouteChildren: RootRouteChildren = {
   CreateRoute: CreateRoute,
   DashboardRoute: DashboardRoute,
   PayIdRoute: PayIdRoute,
+  ApiPublicCloakSplatRoute: ApiPublicCloakSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
