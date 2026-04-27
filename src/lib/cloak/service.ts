@@ -1,30 +1,31 @@
 /**
  * Cloak service factory.
  *
- * Single place to switch between mock and real implementations. The rest
- * of the app never imports a concrete service — it goes through the React
- * provider in `./provider.tsx`, which calls `getCloakService()`.
+ * Returns the real `CloakSdkService` singleton. The React provider in
+ * `./provider.tsx` is responsible for injecting the connected wallet
+ * adapter via `setWallet()` whenever it changes.
  *
- * To enable the real SDK later:
- *   1. Implement `CloakService` in a new file `./real-service.ts`
- *   2. Replace the body of `getCloakService()` to return it (optionally
- *      gated by an env flag like `import.meta.env.VITE_CLOAK_REAL`).
+ * The mock service is kept around as a safe SSR fallback (no wallet
+ * available, no real RPC) — see `mock-service.ts`.
  */
 
 import "./buffer-polyfill"; // must run before SDK code touches `Buffer`
 import type { CloakService } from "./types";
+import { cloakSdkService } from "./sdk-service";
 import { mockCloakService } from "./mock-service";
 
-let instance: CloakService | null = null;
+let instance: CloakService = cloakSdkService;
 
 export function getCloakService(): CloakService {
-  if (instance) return instance;
-  // Future: check env flag here and return RealCloakService instead
-  instance = mockCloakService;
   return instance;
 }
 
 /** Test/dev helper to inject a custom implementation (e.g. for Storybook). */
 export function __setCloakService(svc: CloakService) {
   instance = svc;
+}
+
+/** Force the mock service (used by SSR / pre-wallet states). */
+export function useMockCloakService() {
+  instance = mockCloakService;
 }
