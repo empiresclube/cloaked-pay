@@ -31,6 +31,12 @@ export interface PaymentLink {
   // Set when paid
   paidAt?: number;
   txSignature?: string;
+  /** Leaf index of the deposit's output UTXO in the on-chain Merkle tree. */
+  depositLeafIndex?: number;
+  /** Blinding factor used when the payer built the deposit UTXO. */
+  depositBlindingHex?: string;
+  /** Lamports actually deposited into the merchant UTXO. */
+  depositLamports?: number;
   /** Withdraw signature once the merchant pulls funds out of the shielded pool. */
   withdrawSignature?: string;
   withdrawnAt?: number;
