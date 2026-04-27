@@ -102,7 +102,7 @@ function Dashboard() {
   const removeLink = (link: PaymentLink) => {
     linksStore.remove(link.id);
     toast("Link deleted", {
-      description: `${link.amount.toFixed(2)} ${link.token} request removed.`,
+      description: `${link.amount} ${link.token} request removed.`,
     });
   };
 
@@ -133,8 +133,8 @@ function Dashboard() {
         <div className="mt-8 grid gap-px overflow-hidden rounded-2xl border border-border bg-border md:grid-cols-3">
           <StatCard
             label="Total received"
-            value={totalPaid.toFixed(2)}
-            suffix="USDC"
+            value={totalPaid.toFixed(3)}
+            suffix="SOL"
           />
           <StatCard label="Pending" value={pendingCount.toString()} />
           <StatCard label="Total links" value={links.length.toString()} />
@@ -223,7 +223,7 @@ function Dashboard() {
                   </div>
                   <div className="col-span-2">
                     <span className="font-display text-base font-semibold tabular-nums text-foreground">
-                      {link.amount.toFixed(2)}
+                      {link.amount}
                     </span>
                     <span className="ml-1 text-xs text-muted-foreground">
                       {link.token}
@@ -294,7 +294,7 @@ function Dashboard() {
                 <>
                   Request{" "}
                   <span className="font-medium text-foreground tabular-nums">
-                    {sharedLink.amount.toFixed(2)} {sharedLink.token}
+                    {sharedLink.amount} {sharedLink.token}
                   </span>{" "}
                   privately.
                 </>

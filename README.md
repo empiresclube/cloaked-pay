@@ -58,17 +58,18 @@ src/lib/cloak/
   └── provider.tsx      ← React hooks: useCloak, useShieldedBalance, usePrivateSend
 ```
 
-### What's real vs. simulated in this demo
+### What's real on devnet
 
 | Layer                                     | Status        |
 | ----------------------------------------- | ------------- |
 | Cloak key derivation (`generateCloakKeys`)| ✅ Real SDK   |
-| Stealth address per link (`generateUtxoKeypair`) | ✅ Real SDK |
-| Viewing key generation                    | ✅ Real SDK   |
-| Amount/format utilities                   | ✅ Real SDK   |
 | Wallet connect (Phantom, Solflare)        | ✅ Real `@solana/wallet-adapter-react` |
-| ZK proof generation                       | ⏳ Simulated timing — to enable, replace `submitOnChain()` in `mock-service.ts` with `transact()` from `@cloak.dev/sdk` |
-| On-chain submission                       | ⏳ Simulated signature — needs a funded wallet (devnet/mainnet) |
+| Note generation (`generateNote`)          | ✅ Real SDK — one note per payment link |
+| Deposit (public → shielded pool)          | ✅ Real on devnet via `CloakSDK.deposit` |
+| ZK proof generation (Groth16, in-browser) | ✅ Real snarkjs, circuits via CDN |
+| Private transfer (`privateTransfer`)      | ✅ Real on devnet — deposit + proof + relay withdraw in one call |
+| On-chain submission                       | ✅ Real signature, viewable on Solana Explorer (devnet) |
+| Token                                     | **SOL only on devnet.** USDC/USDT private flows depend on swap routes that exist only on mainnet. |
 
 This split is intentional: every part of the stack that *encodes the privacy
 model* is real Cloak; the only mock is the actual on-chain hop, which

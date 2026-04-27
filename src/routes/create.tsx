@@ -28,7 +28,7 @@ function CreatePage() {
   const navigate = useNavigate();
 
   const [amount, setAmount] = useState("");
-  const [token, setToken] = useState<TokenSymbol>("USDC");
+  const [token, setToken] = useState<TokenSymbol>("SOL");
   const [description, setDescription] = useState("");
   const [created, setCreated] = useState<PaymentLink | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -74,9 +74,17 @@ function CreatePage() {
       });
       return;
     }
+    if (token === "SOL" && amt < 0.01) {
+      toast.error("Minimum is 0.01 SOL", {
+        description: "Cloak shield pool requires at least 0.01 SOL per note.",
+      });
+      return;
+    }
     setSubmitting(true);
 
     try {
+      // The recipient address IS the merchant's wallet — the privacy comes
+      // from the shielded pool hop, not from a separate stealth pubkey.
       const stealth = await deriveStealthAddressFor(publicKey);
 
       const link: PaymentLink = {
@@ -93,7 +101,7 @@ function CreatePage() {
       linksStore.create(link);
       setCreated(link);
       toast.success("Payment link created", {
-        description: `Ready to receive ${amt.toFixed(2)} ${token} privately.`,
+        description: `Ready to receive ${amt} ${token} privately.`,
       });
     } catch (err) {
       toast.error("Couldn't create link", {
@@ -124,9 +132,9 @@ function CreatePage() {
               <p className="mt-2 max-w-sm text-sm text-muted-foreground leading-relaxed">
                 Anyone with this link can pay you{" "}
                 <span className="font-medium text-foreground tabular-nums">
-                  {created.amount.toFixed(2)} {created.token}
+                  {created.amount} {created.token}
                 </span>{" "}
-                privately. You'll see it here when it's paid.
+                privately on devnet. You'll see it here when it's paid.
               </p>
             </div>
 
@@ -187,9 +195,9 @@ function CreatePage() {
                     id="amount"
                     type="number"
                     inputMode="decimal"
-                    step="0.01"
-                    min="0"
-                    placeholder="0.00"
+                    step="0.001"
+                    min="0.01"
+                    placeholder="0.05"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     required
@@ -197,22 +205,37 @@ function CreatePage() {
                   />
                 </div>
                 <div className="flex rounded-lg border border-border bg-secondary p-1">
-                  {(["USDC", "USDT"] as TokenSymbol[]).map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => setToken(t)}
-                      className={`rounded-md px-4 text-sm font-medium transition-all ${
-                        token === t
-                          ? "bg-card text-foreground shadow-xs"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      {t}
-                    </button>
-                  ))}
+                  {(["SOL", "USDC", "USDT"] as TokenSymbol[]).map((t) => {
+                    const disabled = t !== "SOL";
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => !disabled && setToken(t)}
+                        disabled={disabled}
+                        title={disabled ? "Mainnet only — use SOL on devnet" : undefined}
+                        className={`rounded-md px-4 text-sm font-medium transition-all ${
+                          token === t
+                            ? "bg-card text-foreground shadow-xs"
+                            : disabled
+                              ? "text-muted-foreground/40 cursor-not-allowed"
+                              : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {t}
+                        {disabled && (
+                          <span className="ml-1 text-[9px] uppercase tracking-wider opacity-60">
+                            soon
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Minimum 0.01 SOL · Cloak shield-pool fee ≈ 0.005 SOL + 0.3%.
+              </p>
             </div>
 
             <div>
