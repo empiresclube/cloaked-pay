@@ -56,6 +56,10 @@ export function Header() {
         </nav>
 
         <div className="flex items-center gap-2">
+          <span className="hidden sm:inline-flex items-center gap-1 rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-warning-foreground">
+            <span className="h-1 w-1 rounded-full bg-warning animate-pulse-glow" />
+            Devnet
+          </span>
           {connected && publicKey ? (
             <>
               <div className="hidden sm:flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-mono text-muted-foreground">
