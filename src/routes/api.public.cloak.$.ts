@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import type {} from "@tanstack/react-start";
 
 const CLOAK_DEVNET_RELAY = "https://api.devnet.cloak.ag";
 
