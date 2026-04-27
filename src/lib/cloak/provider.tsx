@@ -6,11 +6,22 @@
  *   - `useShieldedBalance(token)` reactive shielded balance for current wallet
  *   - `usePrivateSend()` stateful hook with progress for one-click pay UX
  *
- * UI components only import from `@/lib/cloak`, never from `mock-service`.
+ * Also injects the connected `@solana/wallet-adapter-react` adapter into the
+ * `CloakSdkService` singleton whenever the wallet changes, so all SDK calls
+ * use the user's real signing keys.
  */
 
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
+import { useWallet as useAdapterWallet } from "@solana/wallet-adapter-react";
 import { getCloakService } from "./service";
+import { cloakSdkService } from "./sdk-service";
 import type {
   CloakService,
   OperationProgress,
@@ -28,7 +39,23 @@ interface CloakContextValue {
 const CloakContext = createContext<CloakContextValue | null>(null);
 
 export function CloakProvider({ children }: { children: ReactNode }) {
+  const adapter = useAdapterWallet();
   const service = getCloakService();
+
+  // Push the wallet adapter down into the SDK whenever it changes.
+  useEffect(() => {
+    if (adapter.connected && adapter.publicKey && adapter.signTransaction) {
+      cloakSdkService.setWallet({
+        publicKey: adapter.publicKey,
+        signTransaction: adapter.signTransaction.bind(adapter) as never,
+        signAllTransactions: adapter.signAllTransactions?.bind(adapter) as never,
+        sendTransaction: adapter.sendTransaction.bind(adapter) as never,
+      });
+    } else {
+      cloakSdkService.setWallet(null);
+    }
+  }, [adapter.connected, adapter.publicKey, adapter.signTransaction, adapter.sendTransaction, adapter.signAllTransactions, adapter]);
+
   return <CloakContext.Provider value={{ service }}>{children}</CloakContext.Provider>;
 }
 
@@ -53,7 +80,9 @@ export function useShieldedBalance(token: TokenSymbol): {
       setBalance(null);
       return;
     }
-    service.getShieldedBalance(publicKey, token).then(setBalance);
+    service.getShieldedBalance(publicKey, token).then(setBalance).catch(() => {
+      setBalance({ token, available: 0, pending: 0, noteCount: 0 });
+    });
   }, [service, publicKey, token]);
 
   useEffect(() => {
