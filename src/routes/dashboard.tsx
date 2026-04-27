@@ -141,7 +141,7 @@ function Dashboard() {
         depositLamports: link.depositLamports,
         depositLeafIndex: link.depositLeafIndex,
         depositBlindingHex: link.depositBlindingHex,
-        onProgress: (p) => toast.loading(p.message, { id: t }),
+        onProgress: (p: { message: string }) => toast.loading(p.message, { id: t }),
       } as never);
       linksStore.markWithdrawn(link.id, result.signature);
       toast.success("Withdrawn to your wallet", {
