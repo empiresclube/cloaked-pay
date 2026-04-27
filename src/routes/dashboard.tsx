@@ -2,7 +2,8 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Header } from "@/components/Header";
 import { useWallet, shortAddress } from "@/lib/wallet";
-import { linksStore } from "@/lib/storage";
+import { linksStore, merchantUtxoStore } from "@/lib/storage";
+import { getCloakService, explorerUrl } from "@/lib/cloak";
 import type { PaymentLink } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
