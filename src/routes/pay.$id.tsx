@@ -3,7 +3,11 @@ import { useEffect, useState } from "react";
 import { Header } from "@/components/Header";
 import { linksStore } from "@/lib/storage";
 import { useWallet, shortAddress } from "@/lib/wallet";
-import { getCloakService, type StealthAddress } from "@/lib/cloak";
+import {
+  getCloakService,
+  explorerUrl,
+  type StealthAddress,
+} from "@/lib/cloak";
 import type { PaymentLink } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +18,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Copy,
+  ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
 
